@@ -1,0 +1,95 @@
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  generateName: xero-mcp-pr-
+  annotations:
+    pipelinesascode.tekton.dev/on-event: '[pull_request]'
+    pipelinesascode.tekton.dev/on-target-branch: '[main]'
+    pipelinesascode.tekton.dev/target-namespace: tekton-buildkit
+    pipelinesascode.tekton.dev/max-keep-runs: '5'
+    pipelinesascode.tekton.dev/cancel-in-progress: 'true'
+  labels:
+    app.kubernetes.io/part-of: ci
+    tekton.dev/pipeline: xero-mcp-pr
+spec:
+  params:
+  - name: revision
+    value: '{{ revision }}'
+  taskRunTemplate:
+    serviceAccountName: tekton-build-sa
+    podTemplate:
+      nodeSelector:
+        storage.xlab.now/fast-local: 'true'
+      securityContext:
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+  timeouts:
+    pipeline: 30m
+  pipelineSpec:
+    params:
+    - name: revision
+      type: string
+    workspaces:
+    - name: source
+    tasks:
+    - name: clone
+      taskRef:
+        resolver: cluster
+        params:
+        - {name: kind, value: task}
+        - {name: name, value: git-clone-v2}
+        - {name: namespace, value: tekton-pipelines}
+      params:
+      - name: url
+        value: https://github.com/applyinnovations/xero-mcp-server
+      - name: revision
+        value: $(params.revision)
+      - name: expectedCommitSha
+        value: $(params.revision)
+      - name: objectFilter
+        value: none
+      - name: outputOwnerUid
+        value: '1000'
+      - name: outputOwnerGid
+        value: '1000'
+      workspaces:
+      - name: output
+        workspace: source
+    - name: verify
+      runAfter: [clone]
+      taskSpec:
+        workspaces:
+        - name: source
+        steps:
+        - name: verify
+          image: node:24.21.0-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6
+          workingDir: $(workspaces.source.path)
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          computeResources:
+            requests: {cpu: '1', memory: 1Gi}
+            limits: {cpu: '4', memory: 4Gi}
+          script: |
+            #!/bin/sh
+            set -eu
+            npm ci --ignore-scripts --no-audit --no-fund --cache /tmp/npm-cache
+            npm run build
+            npm test
+            npm run lint
+      workspaces:
+      - name: source
+        workspace: source
+  workspaces:
+  - name: source
+    volumeClaimTemplate:
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: fast-local
+        resources:
+          requests:
+            storage: 2Gi

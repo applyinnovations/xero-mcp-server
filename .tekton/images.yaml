@@ -1,0 +1,96 @@
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  generateName: xero-mcp-images-
+  annotations:
+    pipelinesascode.tekton.dev/on-event: '[push]'
+    pipelinesascode.tekton.dev/on-target-branch: '[main]'
+    pipelinesascode.tekton.dev/target-namespace: tekton-buildkit
+    pipelinesascode.tekton.dev/max-keep-runs: '5'
+    pipelinesascode.tekton.dev/cancel-in-progress: 'true'
+  labels:
+    app.kubernetes.io/part-of: ci
+    tekton.dev/pipeline: xero-mcp-images
+spec:
+  params:
+  - name: revision
+    value: '{{ revision }}'
+  taskRunTemplate:
+    serviceAccountName: tekton-build-sa
+    podTemplate:
+      nodeSelector:
+        storage.xlab.now/fast-local: 'true'
+      securityContext:
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+  taskRunSpecs:
+  - pipelineTaskName: build-and-push
+    podTemplate:
+      hostUsers: false
+  timeouts:
+    pipeline: 30m
+  pipelineSpec:
+    params:
+    - name: revision
+      type: string
+    workspaces:
+    - name: source
+    - name: buildkit-state
+    - name: docker-config
+    tasks:
+    - name: clone
+      taskRef:
+        resolver: cluster
+        params:
+        - {name: kind, value: task}
+        - {name: name, value: git-clone-v2}
+        - {name: namespace, value: tekton-pipelines}
+      params:
+      - name: url
+        value: https://github.com/applyinnovations/xero-mcp-server
+      - name: revision
+        value: $(params.revision)
+      - name: expectedCommitSha
+        value: $(params.revision)
+      - name: objectFilter
+        value: none
+      workspaces:
+      - name: output
+        workspace: source
+    - name: build-and-push
+      runAfter: [clone]
+      taskRef:
+        resolver: cluster
+        params:
+        - {name: kind, value: task}
+        - {name: name, value: buildkit-build-push}
+        - {name: namespace, value: tekton-buildkit}
+      params:
+      - name: IMAGE
+        value: registry.registry.svc.cluster.local/xero-mcp-server
+      - name: COMMIT_SHA
+        value: $(tasks.clone.results.COMMIT_SHA)
+      - name: REGISTRY_INSECURE
+        value: 'true'
+      workspaces:
+      - {name: source, workspace: source}
+      - {name: buildkit-state, workspace: buildkit-state}
+      - {name: docker-config, workspace: docker-config}
+    results:
+    - name: IMAGE_DIGEST
+      value: $(tasks.build-and-push.results.IMAGE_DIGEST)
+  workspaces:
+  - name: source
+    volumeClaimTemplate:
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: fast-local
+        resources:
+          requests:
+            storage: 2Gi
+  - name: buildkit-state
+    persistentVolumeClaim:
+      claimName: oci-layer-cache
+  - name: docker-config
+    secret:
+      secretName: registry-credentials

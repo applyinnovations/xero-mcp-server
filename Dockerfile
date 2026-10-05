@@ -5,9 +5,9 @@ WORKDIR /app
 FROM base AS build
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts --no-audit --no-fund
-COPY tsconfig.json vitest.config.ts ./
+COPY tsconfig.json vitest.config.ts eslint.config.js ./
 COPY src ./src
-RUN npm run build && npm test
+RUN npm run build && npm test && npm run lint
 
 FROM base AS production-dependencies
 COPY package.json package-lock.json ./
