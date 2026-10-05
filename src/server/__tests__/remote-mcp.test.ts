@@ -7,6 +7,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { createAccessVerifier, loadRemoteConfig, RemoteAuthError, RemoteConfig } from "../../auth/remote-auth.js";
 import { TenantXeroClient } from "../../clients/xero-client.js";
+import { transaction, accounts, changes } from "../../recoding/__tests__/fixtures.js";
 import { createRemoteServer } from "../remote-mcp-server.js";
 
 const tenantA = "11111111-1111-4111-8111-111111111111";
@@ -23,8 +24,8 @@ async function token(overrides: Record<string, unknown> = {}) {
   const now = Math.floor(Date.now() / 1000);
   return new SignJWT({ iss: config.issuer, aud: config.audience, sub: "alice", iat: now, exp: now + 300, typ: "Bearer", scope: "xero:read", ...overrides }).setProtectedHeader({ alg: "RS256", kid: "fixture", typ: "JWT" }).sign(privateKey);
 }
-async function listening() {
-  const server = createRemoteServer(config, key);
+async function listening(configuration = config) {
+  const server = createRemoteServer(configuration, key);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const url = new URL(`http://127.0.0.1:${(server.address() as AddressInfo).port}/mcp`);
   return { server, url, close: () => new Promise<void>((resolve) => { server.closeAllConnections(); server.close(() => resolve()); }) };
@@ -104,4 +105,40 @@ describe("remote MCP protocol", () => {
       expect(get.mock.calls.map((call) => call[0]).sort()).toEqual([tenantA, tenantB]);
     } finally { await Promise.all([alice.close(), bob.close()]); await endpoint.close(); }
   });
+});
+
+
+it("exposes apply only to the configured owner, client, action scope and tenant, with explicit activation", async () => {
+  vi.stubEnv("XERO_ALLOWED_TENANT_IDS", `${tenantA},${tenantB}`);
+  vi.stubEnv("XERO_CLIENT_BEARER_TOKEN", "synthetic-read-token");
+  vi.spyOn(TenantXeroClient.prototype, "authenticate").mockResolvedValue(undefined);
+  vi.spyOn(AccountingApi.prototype, "getBankTransaction").mockResolvedValue({ body: { bankTransactions: [transaction] }, response: {} } as Awaited<ReturnType<AccountingApi["getBankTransaction"]>>);
+  vi.spyOn(AccountingApi.prototype, "getAccounts").mockResolvedValue({ body: { accounts }, response: {} } as Awaited<ReturnType<AccountingApi["getAccounts"]>>);
+  const post = vi.spyOn(AccountingApi.prototype, "updateBankTransaction");
+  for (const [enabled, claims, allowed] of [
+    [true, { azp: "approved-client", scope: "xero:read xero:code" }, true],
+    [true, { azp: "approved-client", scope: "xero:read" }, false],
+    [true, { azp: "different-client", scope: "xero:read xero:code" }, false],
+    [true, { sub: "bob", azp: "approved-client", scope: "xero:read xero:code" }, false],
+    [false, { azp: "approved-client", scope: "xero:read xero:code" }, false],
+  ] as const) {
+    const endpoint = await listening({ ...config, recoding: { tenantId: tenantA, subjects: ["alice"], clientId: "approved-client", scope: "xero:code", enabled, grantMode: "shared" } });
+    const client = new Client({ name: "coding-test", version: "1" });
+    try {
+      await client.connect(new StreamableHTTPClientTransport(endpoint.url, { requestInit: { headers: { Authorization: `Bearer ${await token(claims)}` } } }));
+      const names = (await client.listTools()).tools.map(tool => tool.name);
+      expect(names.includes("apply-bank-recode")).toBe(allowed);
+      expect(names.filter(name => !/^(list|get)-/.test(name))).toEqual(allowed ? ["apply-bank-recode"] : []);
+      if (allowed) {
+        const p = await client.callTool({ name: "get-bank-recode-proposal", arguments: { tenantId: tenantA, bankTransactionId: transaction.bankTransactionID, changes } });
+        expect(p.isError).not.toBe(true);
+        const denied = await client.callTool({ name: "apply-bank-recode", arguments: { tenantId: tenantB, proposalId: p.structuredContent!.proposalId, approvalHash: p.structuredContent!.approvalHash, confirmed: true } });
+        expect(denied.isError).toBe(true);
+        const receipt = await client.callTool({ name: "apply-bank-recode", arguments: { tenantId: tenantA, proposalId: p.structuredContent!.proposalId, approvalHash: p.structuredContent!.approvalHash, confirmed: true } });
+        // The real current read-only grant cannot become a writer through an MCP action scope.
+        expect(receipt.structuredContent).toMatchObject({ outcome: "not-applied", reason: "grant" });
+      }
+    } finally { await client.close(); await endpoint.close(); }
+  }
+  expect(post).not.toHaveBeenCalled();
 });

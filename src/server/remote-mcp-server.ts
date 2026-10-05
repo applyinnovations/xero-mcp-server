@@ -8,6 +8,10 @@ import { ToolFactory } from "../tools/tool-factory.js";
 import { configuredOnboarding, XeroOnboarding, XeroOnboardingError } from "../auth/xero-onboarding.js";
 import { registerOnboardingTools } from "../tools/onboarding.js";
 
+import { BankRecodeService } from "../recoding/bank-recode-service.js";
+import { runWithRecodeContext } from "../recoding/context.js";
+import ApplyBankRecodeTool from "../tools/update/apply-bank-recode.tool.js";
+
 function json(response: ServerResponse, status: number, body: unknown) {
   response.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store" });
   response.end(JSON.stringify(body));
@@ -26,11 +30,12 @@ async function requestBody(request: IncomingMessage): Promise<unknown> {
 
 export function createRemoteServer(config: RemoteConfig, key?: JWTVerifyGetKey, onboarding: XeroOnboarding | undefined = configuredOnboarding(config)) {
   const verify = createAccessContextVerifier(config, key);
+  const recoding = config.recoding ? new BankRecodeService(config.recoding) : undefined;
   const resource = new URL(config.resource);
   const metadataPath = `/.well-known/oauth-protected-resource${resource.pathname}`;
   const metadataUrl = new URL(metadataPath, resource.origin).href;
   const hosts = new Set([resource.hostname, "127.0.0.1", "localhost"]);
-  const scopes = [config.readScope, ...(onboarding && config.connectScope ? [config.connectScope] : [])];
+  const scopes = [config.readScope, ...(recoding?.config.enabled ? [recoding.config.scope] : []), ...(onboarding && config.connectScope ? [config.connectScope] : [])];
   const challenge = `Bearer resource_metadata="${metadataUrl}", scope="${scopes.join(" ")}"`;
   const server = createServer((request, response) => {
     void (async () => {
@@ -73,9 +78,16 @@ export function createRemoteServer(config: RemoteConfig, key?: JWTVerifyGetKey, 
         let body;
         try { body = await requestBody(request); }
         catch { json(response, 400, { error: "Invalid or oversized JSON body" }); return; }
-        await runWithTenantPermissions(permissions, async () => {
+        const canApply = !!recoding && reader && recoding.config.enabled && permissions.includes(recoding.config.tenantId)
+          && recoding.config.subjects.includes(context.subject) && context.clientId === recoding.config.clientId && context.scopes.includes(recoding.config.scope);
+        const authority = recoding ? { service: recoding, subject: context.subject, clientId: context.clientId, canApply } : undefined;
+        await runWithRecodeContext(authority, () => runWithTenantPermissions(permissions, async () => {
           const mcp = XeroMcpServer.GetServer();
           if (reader) ToolFactory(mcp);
+          if (canApply) {
+            const tool = ApplyBankRecodeTool();
+            mcp.tool(tool.name, tool.description, tool.schema, tool.handler);
+          }
           if (connector && onboarding) registerOnboardingTools(mcp, onboarding, context.subject);
           const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
           let closed = false;
@@ -84,7 +96,7 @@ export function createRemoteServer(config: RemoteConfig, key?: JWTVerifyGetKey, 
           response.once("close", close);
           await mcp.connect(transport);
           await transport.handleRequest(request, response, body);
-        });
+        }));
       } catch (error) {
         if (response.headersSent) { response.destroy(); return; }
         if (error instanceof RemoteAuthError) {

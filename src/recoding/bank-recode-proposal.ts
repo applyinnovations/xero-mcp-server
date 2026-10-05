@@ -18,17 +18,21 @@ function canonical(value: unknown): unknown {
   return value;
 }
 
-// This is a proposal, never an update request. Preserve the complete SDK record.
+export function transactionSnapshotHash(tenantId: string, transaction: BankTransaction): string {
+  return createHash("sha256").update(JSON.stringify(canonical({ tenantId, transaction }))).digest("hex");
+}
+
+// Preserve the complete SDK record, including descriptions and references.
 export function bankRecodeProposal(tenantId: string, transaction: BankTransaction,
   changes: z.infer<typeof bankRecodeChangesSchema>, accounts: Account[]) {
   z.string().uuid().parse(tenantId);
   z.string().uuid().parse(transaction.bankTransactionID);
   if (!["SPEND", "RECEIVE"].includes(String(transaction.type)) ||
-      String(transaction.status) !== "AUTHORISED" || transaction.isReconciled !== true ||
+      String(transaction.status) !== "AUTHORISED" || typeof transaction.isReconciled !== "boolean" ||
       !transaction.bankAccount?.accountID || !transaction.contact?.contactID ||
       !transaction.currencyCode || !transaction.date || !transaction.lineAmountTypes ||
       ![transaction.total, transaction.totalTax, transaction.subTotal].every(Number.isFinite)) {
-    throw new Error("Proposal requires a complete authorised reconciled SPEND/RECEIVE record");
+    throw new Error("Proposal requires a complete authorised SPEND/RECEIVE record");
   }
   const parsed = bankRecodeChangesSchema.parse(changes);
   if (new Set(parsed.map(change => change.lineItemId)).size !== parsed.length) {
@@ -49,14 +53,16 @@ export function bankRecodeProposal(tenantId: string, transaction: BankTransactio
   const diff = parsed.map(change => {
     const original = lines.find(line => line.lineItemID === change.lineItemId);
     const target = accounts.find(account => account.code === change.accountCode &&
-      String(account.status) === "ACTIVE" && account.type !== undefined && String(account.type) !== "BANK");
+      String(account.status) === "ACTIVE" && account.type !== undefined && String(account.type) !== "BANK" && !!account.accountID);
     if (!original || !target) throw new Error("Select an existing line and an active non-bank account code");
     if (original.accountCode === change.accountCode) throw new Error("Account code is unchanged");
-    proposed.lineItems!.find(line => line.lineItemID === change.lineItemId)!.accountCode = change.accountCode;
-    return { lineItemId: change.lineItemId, accountCode: { before: original.accountCode, after: change.accountCode } };
+    const selected = proposed.lineItems!.find(line => line.lineItemID === change.lineItemId)!;
+    selected.accountCode = change.accountCode;
+    selected.accountID = target.accountID;
+    return { lineItemId: change.lineItemId, accountCode: { before: original.accountCode, after: change.accountCode }, accountId: { before: original.accountID, after: target.accountID } };
   });
-  const snapshotSha256 = createHash("sha256").update(JSON.stringify(canonical({ tenantId, transaction }))).digest("hex");
+  const snapshotSha256 = transactionSnapshotHash(tenantId, transaction);
   return { dryRun: true, executionEnabled: false, tenantId, bankTransactionId: transaction.bankTransactionID,
     snapshotSha256, changes: diff, before: structuredClone(transaction), proposedTransaction: proposed,
-    gate: "Demo statement-linkage proof and explicit action approval are required before any execution implementation" };
+    gate: "Execution requires configured action permission, approved exact diff, OAuth write scope and validated Demo linkage" };
 }

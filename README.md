@@ -288,7 +288,7 @@ reads SPEND/RECEIVE only, defaults to reconciled transactions, and supports
 page. Concurrent changes can affect pagination, so it is not a snapshot export.
 `get-bank-transaction` retrieves one full SPEND/RECEIVE record by ID.
 
-Write tools are not registered. Enabling recoding requires later approval and a
+Write tools are disabled by default. Enabling account coding requires approval and a
 Demo Company test proving that the original statement-line match survives an
 in-place update, along with unchanged transaction/line IDs, tracking not selected
 for change, tax, currency and totals. An `isReconciled` flag alone is insufficient.
@@ -527,9 +527,8 @@ protected. Back up the current encrypted state and key separately.
 
 Tests use synthetic keys/tokens and mocked Xero endpoints. Real app consent,
 browser/hosted-client behavior, issued-token/scopes, all organisations and durable
-refresh/restart require separately approved live acceptance. Accounting write
-tools remain unregistered; bank reconciliation-preserving recoding still requires
-its independent Demo Company proof.
+refresh/restart require separately approved live acceptance. Account coding remains disabled until its independent Demo Company proof and
+action/OAuth approvals are complete.
 
 ### xlab CI
 
@@ -546,25 +545,73 @@ that tested digest. The shared builder/registry do not enforce immutable SHA tag
 against a rebuild, and the current semver pruner skips SHA-only repositories.
 CI does not connect to Xero, enable writes or deploy the MCP service.
 
-## Read-only bank recoding proposals
+## Preview and apply bank account coding
 
-`get-bank-recode-proposal` prepares an account-code diff for existing reconciled
-SPEND/RECEIVE line IDs. It performs only bank-transaction and account GETs, returns
-complete before/proposed records with a tenant-bound SHA-256 snapshot, and never
-executes an update. IDs, tracking, tax, currency and totals are retained; unsupported
-fields and incomplete records are rejected. A proposed code must be an active
-non-bank chart account. Explicit existing tax coding is preserved.
+`get-bank-recode-proposal` is a dry run for existing authorised SPEND/RECEIVE
+transactions, whether reconciled or unreconciled. `list-bank-transactions` with
+`reconciledOnly: false` includes both states. Raw bank-feed statement lines are
+outside the public Accounting API and this workflow.
 
-`XERO_RECODING_TENANT_IDS` is a separate comma-separated proposal allowlist,
-defaulting to empty and required to be a subset of `XERO_ALLOWED_TENANT_IDS`.
-Configure only the intended coding organisation; other readable organisations
-cannot use this proposal tool. Existing subject and connected-tenant checks also
-apply. No production proposal configuration or OAuth scopes are changed by this PR.
+Send an explicit `tenantId`, `bankTransactionId` and `changes` containing only
+existing `lineItemId` / target `accountCode` pairs. The preview performs GETs and
+returns complete before/proposed records, the exact diff, a snapshot hash,
+`proposalId`, `approvalHash` and a five-minute expiry. Review the exact diff and
+obtain explicit approval before calling `apply-bank-recode` with that same tenant,
+proposal ID, approval hash and `confirmed: true`. Approval is bound to the verified
+subject and single-use; previews are memory-only, capped at 20, and lost on restart.
 
-The current read grant is sufficient for proposals. Executing a recode requires
-another explicitly approved consent for `accounting.banktransactions`; refresh
-cannot broaden it. Write tools remain unregistered. The
-[Demo Company validation plan](docs/bank-recoding-demo.md) defines the actual
-statement-linkage proof, scope separation, action approval, private audit and
-stale-state limitations required before an execution PR. `IsReconciled` alone
-is not proof, and a snapshot hash is not an atomic Xero write precondition.
+Only the selected account code and its associated GL account ID change. Original
+transaction/line IDs, descriptions, references, untouched lines, tracking, tax
+codes/amounts, quantities, currency/rate and totals are preserved. Target accounts
+must be active and non-bank. Tax/GST changes, line creation/deletion, payments,
+transfers and lodgements are excluded. No other update/create/delete tools are
+registered.
+
+HTTP configuration for preview requires `XERO_RECODING_TENANT_IDS` containing
+exactly one coding tenant (a subset of readable tenants),
+`MCP_RECODE_SUBJECTS_JSON` containing explicitly authorized subjects with read
+permission for that tenant, and `MCP_RECODE_CLIENT_ID` identifying the approved
+identity-provider client. Other connected tenants retain read-only access.
+Unconfigured HTTP requests and stdio cannot use the coding workflow.
+
+`XERO_RECODING_ENABLED` defaults to `false`; the apply tool is then absent. For
+approved activation it requires all of:
+
+- `XERO_RECODING_LINKAGE_VALIDATED=true`, backed by actual approved Demo evidence
+  described in the [validation plan](docs/bank-recoding-demo.md). This flag is an
+  operator assertion, not an API linkage test.
+- `XERO_RECODING_GRANT_MODE=shared` or `separate`, chosen explicitly after approval.
+  Shared uses the existing grant: adding `accounting.banktransactions` gives that
+  grant write capability across all connected tenants, with coding limited by
+  this server to the sole configured tenant. Separate uses an independently
+  approved encrypted state/key/client in `XERO_RECODING_TOKEN_FILE`,
+  `XERO_RECODING_TOKEN_KEY_FILE`, `XERO_RECODING_CLIENT_ID`; it must connect only
+  the coding tenant and must use a distinct approved OAuth app and must not alias the read-state file
+  (including symlinks or hard links). The separate provider
+  supports authorization-code/PKCE grants. No consent flow or credentials are
+  created here. The grant must already include `accounting.banktransactions`;
+  refresh and MCP scopes cannot add Xero consent.
+- `XERO_RECODING_AUDIT_DIR`, an absolute persistent directory owned by the service
+  with mode 0700. Each operation exclusively writes a mode-0600 intent file and
+  fsyncs it before POST, then writes a separate outcome file. Keep this sensitive
+  accounting evidence private; provide backup/retention outside the application.
+- A verified token with read permission plus the separate `MCP_RECODE_SCOPE`
+  (default `xero:code`), matching the configured subject and client. The service
+  advertises that action scope only when enabled; it does not configure grants.
+
+Apply re-fetches the transaction and chart, rejects changed snapshots or target
+accounts, sends one POST with every original line ID, four unit decimals and a
+proposal-specific idempotency key, then GETs the record to compare all preserved
+fields. Computed totals, currency/rate read fields and `IsReconciled` are omitted
+from the POST and verified unchanged afterwards. The response reports `applied`,
+`not-applied`, `drift` or `unknown`, plus audit status. Ambiguous mutations, drift
+or failed final audit persistence halt this process's further coding; inspect the
+saved intent, actual transaction and statement match before any operator recovery.
+Do not automatically retry or undo.
+
+Xero documents no conditional `If-Match` for this update. Own writes are serialized,
+but the final GET/POST interval can race outside edits. Agree an operational editing
+exclusion procedure before activation. `IsReconciled` alone is not proof of linkage;
+every receipt explicitly reports `statementLinkageVerified: false`. Actual Demo
+statement-line linkage remains a required external witness. Production activation,
+OAuth scope choice/consent, image publication and deployment are separate approvals.

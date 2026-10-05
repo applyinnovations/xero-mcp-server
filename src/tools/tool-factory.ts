@@ -21,5 +21,5 @@ export function ToolFactory(server: McpServer) {
   ListTools.map((tool) => tool()).forEach((tool) =>
     server.tool(tool.name, tool.description, tool.schema, tool.handler),
   );
-  // Write tools stay unregistered until actual reconciliation linkage is proven.
+  // HTTP registers only the narrowly authorized account coding tool separately.
 }
