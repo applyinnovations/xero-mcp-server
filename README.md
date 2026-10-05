@@ -12,8 +12,8 @@ This is a Model Context Protocol (MCP) server implementation for Xero. It provid
 
 ## Prerequisites
 
-- Node.js (v18 or higher)
-- npm or pnpm
+- Node.js 24.21.0 LTS (see `.nvmrc`)
+- npm 11.19.x (bundled with the pinned Node runtime)
 - A Xero developer account with API credentials
 
 ## Docs and Links
@@ -196,21 +196,50 @@ For detailed API documentation, please refer to the [MCP Protocol Specification]
 ### Installation
 
 ```bash
-# Using npm
-npm install
-
-# Using pnpm
-pnpm install
+nvm install
+nvm use
+npm ci
 ```
+
+Use the committed lockfile for clean installs. Update it with the supported
+Node/npm toolchain when changing dependencies; do not regenerate it to work
+around an unsupported runtime.
 
 ### Run a build
 
 ```bash
-# Using npm
 npm run build
+npm test
+```
 
-# Using pnpm
-pnpm build
+### Local container image
+
+```bash
+docker build -t xero-mcp-server:local .
+```
+
+The multistage build pins the official Node 24 LTS image by digest, runs the build
+and tests, and installs only production dependencies in the final image. It runs
+as the `node` user and includes the original MIT license. The build context uses
+an allowlist; `.env` files, Git history, dependencies and unrelated local files
+are excluded. The container uses the existing stdio transport and exposes no
+HTTP port.
+
+Pass credentials only at runtime using an environment file kept outside the
+build context:
+
+```bash
+docker run --rm -i --env-file /absolute/path/to/xero-runtime.env xero-mcp-server:local
+```
+
+For a startup check without Xero access, send an MCP initialization request with
+an invalid placeholder token and networking disabled. This verifies startup
+only; it does not call an accounting tool:
+
+```bash
+printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"packaging-smoke","version":"1.0.0"}}}' \
+  | docker run --rm -i --network none \
+      -e XERO_CLIENT_BEARER_TOKEN=invalid-packaging-smoke-token xero-mcp-server:local
 ```
 
 ### Integrating with Claude Desktop
