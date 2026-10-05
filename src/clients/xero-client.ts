@@ -46,6 +46,17 @@ export class TenantXeroClient extends XeroClient {
 }
 
 const context = new AsyncLocalStorage<TenantXeroClient>();
+const permissions = new AsyncLocalStorage<readonly string[]>();
+
+export function runWithTenantPermissions<T>(tenantIds: readonly string[], callback: () => T): T {
+  return permissions.run(tenantIds, callback);
+}
+
+function effectiveTenantIds(): string[] {
+  const allowed = configuredTenantIds();
+  const requested = permissions.getStore();
+  return requested ? allowed.filter((tenantId) => requested.includes(tenantId)) : allowed;
+}
 
 export function runWithXeroClient<T>(client: TenantXeroClient, callback: () => T): T {
   return context.run(client, callback);
@@ -68,7 +79,7 @@ export function configuredTenantIds(): string[] {
 }
 
 export function createTenantClient(tenantId: string): TenantXeroClient {
-  if (!configuredTenantIds().includes(tenantId)) throw new Error("Selected tenant is not allowed");
+  if (!effectiveTenantIds().includes(tenantId)) throw new Error("Selected tenant is not allowed");
   return new TenantXeroClient(tenantId, configuredTokenProvider());
 }
 
@@ -90,7 +101,7 @@ export function configuredTokenProvider(): XeroTokenProvider {
 }
 
 export async function connectedTenants(): Promise<{ tenantId: string; tenantName: string; tenantType: string }[]> {
-  const allowed = configuredTenantIds();
+  const allowed = effectiveTenantIds();
   const client = new XeroClient();
   client.setTokenSet(await configuredTokenProvider().getTokenSet());
   await client.updateTenants(false);
