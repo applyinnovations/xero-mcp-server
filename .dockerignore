@@ -1,0 +1,19 @@
+# Allow only inputs needed to build and test the application.
+**
+!Dockerfile
+!.dockerignore
+!package.json
+!package-lock.json
+!tsconfig.json
+!vitest.config.ts
+!LICENSE
+!src/
+!src/**
+
+# Keep local secrets excluded even if placed beneath src.
+**/.env*
+**/*.pem
+**/*.key
+**/*credentials*
+**/node_modules/
+**/.git/
