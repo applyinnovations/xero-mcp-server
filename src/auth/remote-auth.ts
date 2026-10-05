@@ -10,6 +10,16 @@ export interface RemoteConfig {
   readScope: string;
   subjectTenants: ReadonlyMap<string, readonly string[]>;
   allowedOrigins: readonly string[];
+  connectSubjects?: readonly string[];
+  connectScope?: string;
+  connectClientId?: string;
+}
+
+export interface VerifiedAccess {
+  subject: string;
+  scopes: readonly string[];
+  tenantIds: readonly string[];
+  clientId?: unknown;
 }
 
 export class RemoteAuthError extends Error {
@@ -30,7 +40,11 @@ export function loadRemoteConfig(): RemoteConfig {
   const resource = httpsUrl(process.env.MCP_RESOURCE_URL, "MCP_RESOURCE_URL");
   if (!resource.pathname.endsWith("/mcp")) throw new Error("MCP_RESOURCE_URL must end in /mcp");
   const mapping = z.record(z.string().min(1), z.array(z.string().uuid()).nonempty()).parse(JSON.parse(process.env.MCP_SUBJECT_TENANTS_JSON ?? "{}"));
-  if (!Object.keys(mapping).length) throw new Error("MCP_SUBJECT_TENANTS_JSON must explicitly authorize subjects");
+  const onboarding = z.enum(["true", "false"]).parse(process.env.XERO_ONBOARDING_ENABLED ?? "false") === "true";
+  const connectSubjects = onboarding ? z.array(z.string().min(1)).nonempty().parse(JSON.parse(process.env.MCP_CONNECT_SUBJECTS_JSON ?? "[]")) : undefined;
+  const connectScope = onboarding ? z.string().regex(/^[A-Za-z0-9:_-]+$/).parse(process.env.MCP_CONNECT_SCOPE ?? "xero:connect") : undefined;
+  const connectClientId = onboarding ? z.string().min(1).parse(process.env.MCP_CONNECT_CLIENT_ID) : undefined;
+  if (!Object.keys(mapping).length && !connectSubjects?.length) throw new Error("MCP_SUBJECT_TENANTS_JSON must explicitly authorize subjects");
   const allowedOrigins = (process.env.MCP_ALLOWED_ORIGINS ?? "").split(",").filter(Boolean).map((value) => {
     const url = httpsUrl(value.trim(), "MCP_ALLOWED_ORIGINS");
     if (url.pathname !== "/") throw new Error("Allowed origins must not contain paths");
@@ -39,7 +53,7 @@ export function loadRemoteConfig(): RemoteConfig {
   const readScope = z.string().regex(/^[A-Za-z0-9:_-]+$/).parse(process.env.MCP_READ_SCOPE ?? "xero:read");
   const audience = process.env.MCP_AUDIENCE || resource.href;
   if (!audience.trim()) throw new Error("MCP_AUDIENCE must identify this resource");
-  return { issuer: process.env.MCP_ISSUER!, jwksUrl, accessTokenProfile, resource: resource.href, audience, readScope, subjectTenants: new Map(Object.entries(mapping)), allowedOrigins };
+  return { issuer: process.env.MCP_ISSUER!, jwksUrl, accessTokenProfile, resource: resource.href, audience, readScope, subjectTenants: new Map(Object.entries(mapping)), allowedOrigins, connectSubjects, connectScope, connectClientId };
 }
 
 function trustedJwksUrl(value: string, issuer: string): URL {
@@ -79,7 +93,7 @@ function boundedFetch(fetcher: typeof fetch): typeof fetch {
   };
 }
 
-export function createAccessVerifier(config: RemoteConfig, suppliedKey?: JWTVerifyGetKey, fetcher: typeof fetch = fetch) {
+export function createAccessContextVerifier(config: RemoteConfig, suppliedKey?: JWTVerifyGetKey, fetcher: typeof fetch = fetch) {
   const get = boundedFetch(fetcher);
   let discoveredKey: Promise<JWTVerifyGetKey> | undefined;
   let retryAt = 0;
@@ -101,7 +115,7 @@ export function createAccessVerifier(config: RemoteConfig, suppliedKey?: JWTVeri
     try { return await discoveredKey; }
     catch { discoveredKey = undefined; retryAt = Date.now() + 30000; throw new Error("Identity discovery unavailable"); }
   }
-  return async (token: string): Promise<readonly string[]> => {
+  return async (token: string): Promise<VerifiedAccess> => {
     let payload;
     try {
       const requiredClaims = ["iss", "aud", "sub", "exp", "iat"];
@@ -116,9 +130,22 @@ export function createAccessVerifier(config: RemoteConfig, suppliedKey?: JWTVeri
         if (typeof payload.client_id !== "string" || !payload.client_id || typeof payload.jti !== "string" || !payload.jti) throw new Error("Invalid access-token profile");
       } else if (payload.typ !== "Bearer") throw new Error("Invalid access-token profile");
     } catch { throw new RemoteAuthError(401); }
-    const scope = typeof payload.scope === "string" ? payload.scope.split(" ") : [];
-    const allowed = config.subjectTenants.get(payload.sub!);
-    if (!scope.includes(config.readScope) || !allowed?.length) throw new RemoteAuthError(403);
-    return allowed;
+    const scopes = typeof payload.scope === "string" ? payload.scope.split(" ") : [];
+    return { subject: payload.sub!, scopes, tenantIds: config.subjectTenants.get(payload.sub!) ?? [],
+      clientId: config.accessTokenProfile === "rfc9068" ? payload.client_id : payload.azp };
   };
+}
+
+export function createAccessVerifier(config: RemoteConfig, suppliedKey?: JWTVerifyGetKey, fetcher: typeof fetch = fetch) {
+  const verify = createAccessContextVerifier(config, suppliedKey, fetcher);
+  return async (token: string): Promise<readonly string[]> => {
+    const context = await verify(token);
+    if (!context.scopes.includes(config.readScope) || !context.tenantIds.length) throw new RemoteAuthError(403);
+    return context.tenantIds;
+  };
+}
+
+export function canConnectXero(config: RemoteConfig, context: VerifiedAccess): boolean {
+  return !!config.connectScope && !!config.connectClientId && !!config.connectSubjects?.includes(context.subject)
+    && context.scopes.includes(config.connectScope) && context.clientId === config.connectClientId;
 }

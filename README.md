@@ -439,6 +439,88 @@ proof that the original statement-line match survives; no flag-setting,
 unreconcile/delete/recreate workaround is enabled.
 
 
+## Hosted owner-authorized Xero PKCE onboarding
+
+This optional flow runs inside the HTTP MCP service. Create an OAuth2 **Auth Code
+with PKCE** app (Mobile/Desktop in the developer portal), without a client secret.
+Register exactly the HTTPS origin of `MCP_RESOURCE_URL` plus `/xero/callback`;
+for `https://mcp.example.com/mcp`, use `https://mcp.example.com/xero/callback`.
+Xero's [PKCE documentation](https://developer.xero.com/documentation/guides/oauth2/pkce-flow/)
+permits HTTPS callbacks and specifies the public-client token exchange. Callback
+routes exist only in an image built with this feature and an approved deployment;
+registering a URI alone does not make it live.
+
+In addition to durable OAuth paths/client ID and the normal OIDC settings, enable:
+
+| Setting | Value |
+| --- | --- |
+| `XERO_ONBOARDING_ENABLED` | `true`; default is `false`. |
+| `MCP_CONNECT_SUBJECTS_JSON` | Nonempty JSON array of exact authorized issuer subject IDs. |
+| `MCP_CONNECT_CLIENT_ID` | Exact approved OAuth client ID: access-token `azp` for `bearer-claim`, `client_id` for `rfc9068`. |
+| `MCP_CONNECT_SCOPE` | Separate required owner scope; default `xero:connect`. |
+| `XERO_ORGANISATION_COUNT` | Intended organisation count, default 3, allowed 1–5. |
+
+Bootstrap permits empty `XERO_ALLOWED_TENANT_IDS` and `{}` for
+`MCP_SUBJECT_TENANTS_JSON` only in explicitly enabled HTTP onboarding. Accounting
+tools stay unavailable until the tenant allowlist, subject mapping and `xero:read`
+permission are configured. Onboarding requires the exact owner, client, scope,
+issuer/audience, signature and access-token profile; ordinary readers receive no
+onboarding tools. The issuer must reserve the resource audience for access tokens
+and attach the owner scope only to its approved client/subjects.
+
+Provision the 32-byte base64 encryption key through the operator's secret manager;
+never send it, access/refresh tokens or client credentials through chat. Mount a
+private regular 0600 key file and writable private state directory. Kubernetes
+Secret symlinks require the deployment's private-file copy step. No key is generated
+by this server. Do not set `XERO_CLIENT_SECRET` or a static bearer token for this
+public PKCE flow. No imported token envelope or local consent helper is required.
+
+After approved deployment, configure the existing MCP client's OAuth scope to
+include the owner scope and proceed only when the human authorizes consent:
+
+1. Call `begin-xero-connection` and give its `startUrl` to the owner. Opening that
+   link in a browser starts a single-use, five-minute capability, sets a Secure/
+   HttpOnly/SameSite=Lax host cookie and directs the owner to Xero. S256 PKCE and
+   random state bind the callback to the transaction and browser. The verifier,
+   codes and tokens are never returned through MCP or logged by the service.
+2. The owner signs in and selects one intended organisation. Call
+   `get-xero-connection-status` with the transaction ID to review names and UUIDs.
+   Call `continue-xero-connection` only when the owner requests the next consent.
+   Use the same Xero user each time; the latest token must see every prior tenant.
+3. Once the complete intended set is visible, ask the owner to confirm that exact
+   list. Only then call `confirm-xero-connection` with its UUIDs and `confirmed=true`.
+   The service rechecks connections and atomically writes encrypted state under
+   the refresh/import lock. It never overwrites healthy stored state. Accounting
+   tools still require a reviewed tenant/subject configuration update.
+
+The consent scopes are exactly `offline_access accounting.banktransactions.read
+accounting.settings.read`, using current [granular read scopes](https://developer.xero.com/documentation/guides/oauth2/scopes/).
+These cover bank transactions and settings; other enumerated accounting/payroll
+tools need separately approved scopes and may fail with this minimal grant.
+The [Starter tier](https://developer.xero.com/pricing) has no monthly fee and allows
+five connections. Its bulk-consent feature is unavailable; connect organisations
+sequentially, then use the latest token for the same user's connected tenants.
+
+One 15-minute transaction is kept in memory per single-writer server. Restart or
+expiry discards unconfirmed tokens; the owner can retry. Declining confirmation
+does not revoke already-consented Xero connections, and no automatic disconnect
+is attempted. Keep callback queries and credential headers out of proxy/access
+logs; the start capability uses a URL fragment to avoid request-URL logging. Browser
+routes are exactly `/xero/start`, `/xero/callback`, `/xero/result` on the configured
+public Host. They ignore forwarded-host/protocol headers and return no tokens.
+
+For an explicitly requested `invalid_grant` recovery, begin with
+`renewRevokedGrant=true`. Recovery requires the persisted reauthorization marker
+and a complete configured tenant set. Confirmation replaces only that marked
+state under lock, after checking the identical tenant set; healthy grants remain
+protected. Back up the current encrypted state and key separately.
+
+Tests use synthetic keys/tokens and mocked Xero endpoints. Real app consent,
+browser/hosted-client behavior, issued-token/scopes, all organisations and durable
+refresh/restart require separately approved live acceptance. Accounting write
+tools remain unregistered; bank reconciliation-preserving recoding still requires
+its independent Demo Company proof.
+
 ### xlab CI
 
 The `.tekton` definitions use the existing Pipelines-as-Code GitHub integration
