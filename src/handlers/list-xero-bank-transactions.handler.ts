@@ -7,16 +7,23 @@ import { formatError } from "../helpers/format-error.js";
 async function getBankTransactions(
   page: number,
   bankAccountId?: string,
+  pageSize: number = 100,
+  type?: "SPEND" | "RECEIVE",
+  reconciledOnly: boolean = true,
 ): Promise<BankTransaction[]> {
   await xeroClient.authenticate();
 
+  const filters = [type ? `Type=="${type}"` : '(Type=="SPEND" OR Type=="RECEIVE")'];
+  if (bankAccountId) filters.push(`BankAccount.AccountID==guid("${bankAccountId}")`);
+  if (reconciledOnly) filters.push("IsReconciled==true");
+
   const response = await xeroClient.accountingApi.getBankTransactions(xeroClient.tenantId,
       undefined, // ifModifiedSince
-      bankAccountId ? `BankAccount.AccountID=guid("${bankAccountId}")` : undefined, // where
+      filters.join(" AND "), // where
       "Date DESC", // order
       page, // page
-      undefined, // unitdp
-      10, // pagesize
+      4, // unitdp
+      pageSize, // pagesize
       getClientHeaders()
   );
 
@@ -25,10 +32,13 @@ async function getBankTransactions(
 
 export async function listXeroBankTransactions(
   page: number = 1,
-  bankAccountId?: string
+  bankAccountId?: string,
+  pageSize: number = 100,
+  type?: "SPEND" | "RECEIVE",
+  reconciledOnly: boolean = true,
 ): Promise<XeroClientResponse<BankTransaction[]>> {
   try {
-    const bankTransactions = await getBankTransactions(page, bankAccountId);
+    const bankTransactions = await getBankTransactions(page, bankAccountId, pageSize, type, reconciledOnly);
 
     return {
       result: bankTransactions,
