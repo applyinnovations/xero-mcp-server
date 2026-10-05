@@ -74,6 +74,7 @@ export const xeroClient = new Proxy({} as TenantXeroClient, {
 
 export function configuredTenantIds(): string[] {
   const ids = (process.env.XERO_ALLOWED_TENANT_IDS ?? "").split(",").filter(Boolean);
+  if (!ids.length && process.env.MCP_TRANSPORT === "http" && process.env.XERO_ONBOARDING_ENABLED === "true") return [];
   if (!ids.length) throw new Error("XERO_ALLOWED_TENANT_IDS must explicitly allow connected tenants");
   return ids.map((id) => z.string().uuid().parse(id.trim()));
 }

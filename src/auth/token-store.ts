@@ -56,6 +56,20 @@ export class EncryptedTokenStore {
     return key;
   }
 
+  async validateKey(): Promise<void> { await this.key(); }
+
+  async hasState(): Promise<boolean> {
+    try {
+      const file = await open(this.path, constants.O_RDONLY | constants.O_NOFOLLOW);
+      try { if (!(await file.stat()).isFile()) throw new Error("State must be a regular file"); }
+      finally { await file.close(); }
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+      throw error;
+    }
+  }
+
   async read(): Promise<StoredTokens> {
     const envelope = envelopeSchema.parse(JSON.parse(await privateFile(this.path)));
     const decipher = createDecipheriv("aes-256-gcm", await this.key(), Buffer.from(envelope.iv, "base64"));
