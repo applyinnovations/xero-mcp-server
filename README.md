@@ -545,73 +545,70 @@ that tested digest. The shared builder/registry do not enforce immutable SHA tag
 against a rebuild, and the current semver pruner skips SHA-only repositories.
 CI does not connect to Xero, enable writes or deploy the MCP service.
 
-## Preview and apply bank account coding
+## Account coding tool
 
-`get-bank-recode-proposal` is a dry run for existing authorised SPEND/RECEIVE
-transactions, whether reconciled or unreconciled. `list-bank-transactions` with
-`reconciledOnly: false` includes both states. Raw bank-feed statement lines are
-outside the public Accounting API and this workflow.
+Use `list-bank-transactions` / `get-bank-transaction` for inspection and
+`list-accounts` for the chart. The agent collaborates with the user and manages
+approval independently. The server exposes one focused mutation:
 
-Send an explicit `tenantId`, `bankTransactionId` and `changes` containing only
-existing `lineItemId` / target `accountCode` pairs. The preview performs GETs and
-returns complete before/proposed records, the exact diff, a snapshot hash,
-`proposalId`, `approvalHash` and a five-minute expiry. Review the exact diff and
-obtain explicit approval before calling `apply-bank-recode` with that same tenant,
-proposal ID, approval hash and `confirmed: true`. Approval is bound to the verified
-subject and single-use; previews are memory-only, capped at 20, and lost on restart.
+```json
+{
+  "tenantId": "<coding-tenant-uuid>",
+  "bankTransactionId": "<existing-transaction-uuid>",
+  "changes": [{ "lineItemId": "<existing-line-uuid>", "accountCode": "500", "expectedAccountCode": "400" }],
+  "idempotencyKey": "<caller-generated-request-uuid>",
+  "expectedUpdatedDateUTC": "2026-01-02T00:00:00Z"
+}
+```
 
-Only the selected account code and its associated GL account ID change. Original
-transaction/line IDs, descriptions, references, untouched lines, tracking, tax
-codes/amounts, quantities, currency/rate and totals are preserved. Target accounts
-must be active and non-bank. Tax/GST changes, line creation/deletion, payments,
-transfers and lodgements are excluded. No other update/create/delete tools are
-registered.
+Call `code-bank-transaction` directly after the agent/client's approval process.
+`expectedAccountCode` and `expectedUpdatedDateUTC` are optional technical stale-state
+checks from ordinary reads. No full transaction package is passed as input. The
+handler fetches current state and chart internally, validates the selected lines
+and active non-bank targets, and changes only account code and its associated GL
+account ID. Descriptions/references, transaction/line IDs, untouched lines,
+tracking, explicit tax coding/amounts, quantities/amounts, currency/rate and totals
+are preserved and checked through a GET after one targeted POST with `unitdp=4`.
+Computed totals, currency/rate read fields and `IsReconciled` are omitted from POST.
 
-HTTP configuration for preview requires `XERO_RECODING_TENANT_IDS` containing
-exactly one coding tenant (a subset of readable tenants),
-`MCP_RECODE_SUBJECTS_JSON` containing explicitly authorized subjects with read
-permission for that tenant, and `MCP_RECODE_CLIENT_ID` identifying the approved
-identity-provider client. Other connected tenants retain read-only access.
-Unconfigured HTTP requests and stdio cannot use the coding workflow.
+Existing authorised SPEND/RECEIVE entries may be reconciled or unreconciled;
+`list-bank-transactions` with `reconciledOnly: false` includes both states. Raw
+bank-feed statement lines, GST/tax edits, line creation/deletion, payments,
+transfers and lodgements are excluded. No generic CRUD write tools are registered.
 
-`XERO_RECODING_ENABLED` defaults to `false`; the apply tool is then absent. For
-approved activation it requires all of:
+The compact result includes IDs, caller's idempotency key, actor, completion time,
+selected account-code differences and outcome (`updated`, `unchanged`,
+`not-applied`, `rejected`, `unknown` or `drift`). Errors set MCP `isError: true`;
+known Xero rejection status is reported without credentials or raw error payloads.
+Unknown outcomes and post-write drift require inspection through ordinary reads
+and Xero's statement UI before retrying or undoing. Reuse an idempotency key only
+for the identical request; the server never retries or persists receipts. The
+agent/client records results and any before/after evidence it needs. Only a small
+in-flight set rejects overlapping local calls for the same transaction; it is
+released on completion and stores no approval or outcome state.
 
-- `XERO_RECODING_LINKAGE_VALIDATED=true`, backed by actual approved Demo evidence
-  described in the [validation plan](docs/bank-recoding-demo.md). This flag is an
-  operator assertion, not an API linkage test.
-- `XERO_RECODING_GRANT_MODE=shared` or `separate`, chosen explicitly after approval.
-  Shared uses the existing grant: adding `accounting.banktransactions` gives that
-  grant write capability across all connected tenants, with coding limited by
-  this server to the sole configured tenant. Separate uses an independently
-  approved encrypted state/key/client in `XERO_RECODING_TOKEN_FILE`,
-  `XERO_RECODING_TOKEN_KEY_FILE`, `XERO_RECODING_CLIENT_ID`; it must connect only
-  the coding tenant and must use a distinct approved OAuth app and must not alias the read-state file
-  (including symlinks or hard links). The separate provider
-  supports authorization-code/PKCE grants. No consent flow or credentials are
-  created here. The grant must already include `accounting.banktransactions`;
-  refresh and MCP scopes cannot add Xero consent.
-- `XERO_RECODING_AUDIT_DIR`, an absolute persistent directory owned by the service
-  with mode 0700. Each operation exclusively writes a mode-0600 intent file and
-  fsyncs it before POST, then writes a separate outcome file. Keep this sensitive
-  accounting evidence private; provide backup/retention outside the application.
-- A verified token with read permission plus the separate `MCP_RECODE_SCOPE`
-  (default `xero:code`), matching the configured subject and client. The service
-  advertises that action scope only when enabled; it does not configure grants.
+`XERO_RECODING_ENABLED` defaults to `false`. Enabled HTTP configuration requires
+exactly one `XERO_RECODING_TENANT_IDS` entry, mapped read subjects in
+`MCP_RECODE_SUBJECTS_JSON`, `MCP_RECODE_CLIENT_ID`, and a separate action scope
+`MCP_RECODE_SCOPE` (default `xero:code`). Only matching verified user/client tokens
+with both read and coding scope see the mutation tool. Other connected tenants
+retain read-only access. Stdio never registers the coding tool.
 
-Apply re-fetches the transaction and chart, rejects changed snapshots or target
-accounts, sends one POST with every original line ID, four unit decimals and a
-proposal-specific idempotency key, then GETs the record to compare all preserved
-fields. Computed totals, currency/rate read fields and `IsReconciled` are omitted
-from the POST and verified unchanged afterwards. The response reports `applied`,
-`not-applied`, `drift` or `unknown`, plus audit status. Ambiguous mutations, drift
-or failed final audit persistence halt this process's further coding; inspect the
-saved intent, actual transaction and statement match before any operator recovery.
-Do not automatically retry or undo.
+Activation additionally requires `XERO_RECODING_LINKAGE_VALIDATED=true`, backed by
+actual [Demo evidence](docs/bank-recoding-demo.md), and an explicit approved
+`XERO_RECODING_GRANT_MODE=shared` or `separate`. The proof flag is an operator
+assertion, not an API test. Shared uses the existing grant; adding
+`accounting.banktransactions` broadens that grant across all connected tenants,
+while this server restricts coding to the sole configured tenant. Separate uses
+an independently approved PKCE app/grant in `XERO_RECODING_TOKEN_FILE`,
+`XERO_RECODING_TOKEN_KEY_FILE`, `XERO_RECODING_CLIENT_ID`, with a distinct app ID,
+non-aliased token state (including symlinks/hard links), and only the coding tenant.
+Grant construction, consent scope and connected-tenant checks belong to the auth
+layer. Neither consent nor credentials are created by this tool.
 
-Xero documents no conditional `If-Match` for this update. Own writes are serialized,
-but the final GET/POST interval can race outside edits. Agree an operational editing
-exclusion procedure before activation. `IsReconciled` alone is not proof of linkage;
-every receipt explicitly reports `statementLinkageVerified: false`. Actual Demo
-statement-line linkage remains a required external witness. Production activation,
-OAuth scope choice/consent, image publication and deployment are separate approvals.
+Xero documents no conditional `If-Match`; optional preconditions and the local
+in-flight guard do not eliminate outside edits between GET and POST. Agree an
+operational editing exclusion procedure before activation. Receipts always report
+`statementLinkageVerified: false`; `IsReconciled` alone cannot prove the actual
+statement match survived. Grant choice/consent, Demo proof, merge, production
+activation, image publication and deployment remain separate decisions.

@@ -1,6 +1,6 @@
 import { createRemoteJWKSet, customFetch, jwtVerify, JWTVerifyGetKey } from "jose";
 import { z } from "zod";
-import { loadRecodeConfig, RecodeConfig } from "../recoding/config.js";
+import { loadBankCodingConfig, BankCodingConfig } from "./bank-coding.js";
 
 export interface RemoteConfig {
   issuer: string;
@@ -14,7 +14,7 @@ export interface RemoteConfig {
   connectSubjects?: readonly string[];
   connectScope?: string;
   connectClientId?: string;
-  recoding?: RecodeConfig;
+  recoding?: BankCodingConfig;
 }
 
 export interface VerifiedAccess {
@@ -55,7 +55,7 @@ export function loadRemoteConfig(): RemoteConfig {
   const readScope = z.string().regex(/^[A-Za-z0-9:_-]+$/).parse(process.env.MCP_READ_SCOPE ?? "xero:read");
   const audience = process.env.MCP_AUDIENCE || resource.href;
   if (!audience.trim()) throw new Error("MCP_AUDIENCE must identify this resource");
-  const recoding = loadRecodeConfig(mapping, readScope, connectScope);
+  const recoding = loadBankCodingConfig(mapping, readScope, connectScope);
   return { recoding, issuer: process.env.MCP_ISSUER!, jwksUrl, accessTokenProfile, resource: resource.href, audience, readScope, subjectTenants: new Map(Object.entries(mapping)), allowedOrigins, connectSubjects, connectScope, connectClientId };
 }
 
