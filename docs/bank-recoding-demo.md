@@ -22,8 +22,9 @@ No Finance access or additional scopes are assumed by this implementation.
 
 ## Authorized Demo Company experiment
 
-1. Obtain explicit permission for a separate Demo Company grant and the exact test
-   transactions. Never use production organisations or their existing grant.
+1. Obtain explicit permission for an isolated Demo-only OAuth app/grant and the
+   exact test transactions. Never reuse the production OAuth app or grant;
+   additive scope consent on that app would also broaden its existing connections.
 2. In Xero, import uniquely identifiable statement lines and reconcile one SPEND
    and one RECEIVE to existing transactions. Include multiple lines/tracking in
    one case. Record the statement line identity, bank account, date, amount and
