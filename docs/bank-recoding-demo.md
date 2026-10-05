@@ -106,8 +106,12 @@ Inspect manually; do not automatically retry, undo, reconcile or recreate.
   set excludes overlapping calls for the same transaction within one process;
   outside edits or another replica can still race GET/POST. Agree and evidence
   an operational editing exclusion procedure; this is not atomic compare-and-swap.
-- A stable caller idempotency key belongs only to the identical request. The server
-  performs one POST and never retries. Known HTTP/validation rejection is reported
+- A stable caller idempotency key belongs only to the identical upstream request.
+  [Xero caches keys for six minutes from the first call and matches URL, body and HTTP method](https://developer.xero.com/documentation/guides/idempotent-requests/idempotency/).
+  Reuse after expiry is processed anew. Since the handler rebuilds POST from fresh
+  reads, unchanged MCP arguments after external edits can produce a different body;
+  the key cannot guarantee unlimited or identical replay. The server performs one
+  POST and never retries. Known HTTP/validation rejection is reported
   as rejection, while timeouts/server errors or unverifiable post-state are unknown.
   Post-write drift is an error. Inspect actual transaction and statement linkage
   before another action; no persistent server approval/outcome state is retained.

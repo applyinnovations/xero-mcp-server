@@ -582,9 +582,14 @@ selected account-code differences and outcome (`updated`, `unchanged`,
 known Xero rejection status is reported without credentials or raw error payloads.
 Unknown outcomes and post-write drift require inspection through ordinary reads
 and Xero's statement UI before retrying or undoing. Reuse an idempotency key only
-for the identical request; the server never retries or persists receipts. The
-agent/client records results and any before/after evidence it needs. Only a small
-in-flight set rejects overlapping local calls for the same transaction; it is
+for the identical upstream request. [Xero caches keys for six minutes from the
+first call and compares the actual URL, body and HTTP method](https://developer.xero.com/documentation/guides/idempotent-requests/idempotency/);
+after expiry, reuse is processed as a new request. This handler rebuilds the POST
+from fresh reads, so identical MCP arguments after an external edit can produce a
+different upstream body. The key is not an unlimited replay guarantee; inspect
+uncertain outcomes before another call. The server never retries or persists
+receipts. The agent/client records results and any before/after evidence it needs.
+Only a small in-flight set rejects overlapping local calls for the same transaction; it is
 released on completion and stores no approval or outcome state.
 
 `XERO_RECODING_ENABLED` defaults to `false`. Enabled HTTP configuration requires
