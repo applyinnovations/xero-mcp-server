@@ -437,3 +437,19 @@ Validate token expiration/key rotation and test each authorised organisation wit
 approved Demo Company access. Real recoding still requires explicit approval and
 proof that the original statement-line match survives; no flag-setting,
 unreconcile/delete/recreate workaround is enabled.
+
+
+### xlab CI
+
+The `.tekton` definitions use the existing Pipelines-as-Code GitHub integration
+and shared `git-clone-v2` / `buildkit-build-push` tasks. PRs targeting `main` run
+build/tests/lint with a fresh source workspace and no registry or Git credential
+workspace. Main pushes build the Dockerfile (including build/tests/lint) and push
+`registry.registry.svc.cluster.local/xero-mcp-server:<full-SHA>` using the existing
+registry credential and BuildKit cache. PaC handles GitHub checks, cancellation
+and retention of five runs per workflow; no separate listener or reporting service
+is needed. Registration lives in `xlab-deployments` with default-branch pipeline
+provenance. PipelineRun results expose the image digest; deployments should pin
+that tested digest. The shared builder/registry do not enforce immutable SHA tags
+against a rebuild, and the current semver pruner skips SHA-only repositories.
+CI does not connect to Xero, enable writes or deploy the MCP service.

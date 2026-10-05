@@ -17,3 +17,5 @@
 **/*credentials*
 **/node_modules/
 **/.git/
+
+!eslint.config.js
