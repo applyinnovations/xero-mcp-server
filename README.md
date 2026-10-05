@@ -470,7 +470,14 @@ and attach the owner scope only to its approved client/subjects.
 Provision the 32-byte base64 encryption key through the operator's secret manager;
 never send it, access/refresh tokens or client credentials through chat. Mount a
 private regular 0600 key file and writable private state directory. Kubernetes
-Secret symlinks require the deployment's private-file copy step. No key is generated
+For a secret-manager projection, set `XERO_TOKEN_KEY_SOURCE_FILE` to the mounted
+source and `XERO_TOKEN_KEY_FILE` to a writable private destination. HTTP startup
+copies only that configured source into a regular 0600 key file, prepares the
+private 0700 state directory and validates existing encrypted state before
+listening. Projected source symlinks are supported; live key/state symlinks are
+rejected. Startup preserves stored tokens and performs no grant or refresh.
+An empty state directory is accepted only for explicitly enabled onboarding;
+revoked state remains available for explicit owner recovery. No key is generated
 by this server. Do not set `XERO_CLIENT_SECRET` or a static bearer token for this
 public PKCE flow. No imported token envelope or local consent helper is required.
 
