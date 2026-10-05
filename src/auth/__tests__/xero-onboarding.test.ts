@@ -10,7 +10,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { EncryptedTokenStore } from "../token-store.js";
 import { XeroOnboarding } from "../xero-onboarding.js";
-import { onboardingScopes, exchangeXeroCode } from "../xero-authorization.js";
+import { onboardingScopes, exchangeXeroCode, getXeroConnections } from "../xero-authorization.js";
 import { RemoteConfig, loadRemoteConfig } from "../remote-auth.js";
 import { createRemoteServer } from "../../server/remote-mcp-server.js";
 
@@ -133,6 +133,19 @@ describe("hosted PKCE onboarding", () => {
     await expect(web.onboarding.begin("owner")).rejects.toThrow();
   });
 
+  it.each([1, 2])("confirms an owner-selected set of %i organisations without an expected count", async count => {
+    const web = await endpoint(); let link = await web.onboarding.begin("owner");
+    for (let n = 1; n <= count; n++) {
+      await callback(web, await launch(web, link));
+      if (n < count) link = web.onboarding.next("owner", link.transactionId);
+    }
+    expect(web.onboarding.status("owner", link.transactionId)).not.toHaveProperty("expectedCount");
+    await expect(web.onboarding.confirm("owner", link.transactionId, [])).rejects.toThrow();
+    await expect(web.onboarding.confirm("owner", link.transactionId, tenants.slice(0, count + 1))).rejects.toThrow();
+    expect(await store.hasState()).toBe(false);
+    expect((await web.onboarding.confirm("owner", link.transactionId, tenants.slice(0, count))).phase).toBe("complete");
+  });
+
   it("rejects stolen state without browser binding, duplicates, replay and cross-origin launch", async () => {
     const web = await endpoint(); const link = await web.onboarding.begin("owner");
     const ticket = new URL(link.startUrl).hash.slice(8);
@@ -165,8 +178,8 @@ describe("hosted PKCE onboarding", () => {
     expect((await web.call("/xero/result")).status).toBe(200);
   });
 
-  it("rejects account switching, lost connections, excess tenants and permission changes before save", async () => {
-    const web = await endpoint(); const link = await web.onboarding.begin("owner");
+  it("rejects account switching, lost connections, unauthorized tenants and permission changes before save", async () => {
+    const web = await endpoint(tenants); const link = await web.onboarding.begin("owner");
     await callback(web, await launch(web, link));
     xeroSubject = "other-xero-user";
     await callback(web, await launch(web, web.onboarding.next("owner", link.transactionId)));
@@ -212,15 +225,16 @@ describe("hosted PKCE onboarding", () => {
     const response = { access_token: issuedToken("fixture", [...onboardingScopes, "accounting.banktransactions"]), refresh_token: "invalid", expires_in: 1800, token_type: "Bearer" };
     const fake = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(response)));
     await expect(exchangeXeroCode(clientId, `${origin}/xero/callback`, "invalid", "invalid", fake)).rejects.toThrow();
-    fake.mockResolvedValue(new Response("x".repeat(65537)));
+    fake.mockImplementation(async () => new Response("x".repeat(65537)));
     await expect(exchangeXeroCode(clientId, `${origin}/xero/callback`, "invalid", "invalid", fake)).rejects.toThrow("Oversized");
+    await expect(getXeroConnections("invalid", fake)).rejects.toThrow("Oversized");
     fake.mockResolvedValue(new Response("", { status: 302 }));
     await expect(exchangeXeroCode(clientId, `${origin}/xero/callback`, "invalid", "invalid", fake)).rejects.toThrow();
   });
 });
 
 describe("onboarding MCP authorization", () => {
-  it("requires owner, exact client, connect scope and signed access profile; bootstrap exposes only four onboarding tools", async () => {
+  it("requires owner/client/scope/access profile and confirms six organisations through the four MCP tools", async () => {
     const web = await endpoint();
     for (const claims of [{ sub: "other" }, { scope: "xero:read" }, { azp: "other-client" }, { typ: "ID" }]) {
       const rejected = new Client({ name: "rejected", version: "1" });
@@ -238,18 +252,23 @@ describe("onboarding MCP authorization", () => {
       expect(result.structuredContent?.startUrl).toMatch(/^https:\/\/mcp.example.test\/xero\/start#ticket=/);
       expect(request).not.toHaveBeenCalled(); expect(await store.hasState()).toBe(false);
       let link = result.structuredContent as { transactionId: string; startUrl: string };
-      for (let n = 1; n <= 3; n++) {
+      const selectedConnections = Array.from({ length: 6 }, (_, n) => ({
+        tenantId: `${(n + 1).toString(16).padStart(8, "0")}-1111-4111-8111-111111111111`,
+        tenantType: "ORGANISATION", tenantName: `Additional fixture ${n + 1}`,
+      }));
+      for (let n = 1; n <= selectedConnections.length; n++) {
+        connectionOverride = selectedConnections.slice(0, n);
         await callback(web, await launch(web, link));
         const status = await owner.callTool({ name: "get-xero-connection-status", arguments: { transactionId: link.transactionId } });
         expect(status.structuredContent?.connections).toHaveLength(n);
-        if (n < 3) {
+        if (n < selectedConnections.length) {
           const next = await owner.callTool({ name: "continue-xero-connection", arguments: { transactionId: link.transactionId } });
           link = next.structuredContent as { transactionId: string; startUrl: string };
         }
       }
-      const saved = await owner.callTool({ name: "confirm-xero-connection", arguments: { transactionId: link.transactionId, tenantIds: tenants, confirmed: true } });
+      const saved = await owner.callTool({ name: "confirm-xero-connection", arguments: { transactionId: link.transactionId, tenantIds: selectedConnections.map(connection => connection.tenantId), confirmed: true } });
       expect(saved.structuredContent?.phase).toBe("complete");
-      expect((await store.read()).refresh_token).toBe("invalid-fixture-refresh-3");
+      expect((await store.read()).refresh_token).toBe("invalid-fixture-refresh-6");
     } finally { await owner.close(); }
   });
   it("permits an empty read mapping only with explicit owner onboarding configuration", () => {

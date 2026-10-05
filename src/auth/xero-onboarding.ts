@@ -9,11 +9,11 @@ type Phase = "launch" | "authorizing" | "exchanging" | "review" | "failed" | "sa
 interface Transaction {
   id: string; owner: string; expires: number; nonceExpires: number; phase: Phase; ticket?: string; cookieHash?: Buffer;
   authorization: ReturnType<typeof createXeroAuthorization>; tokens?: StoredTokens; xeroSubject?: string;
-  connections: XeroConnection[]; rounds: number;
+  connections: XeroConnection[];
   renewRevokedGrant: boolean;
 }
 interface Options {
-  origin: string; clientId: string; store: EncryptedTokenStore; expectedCount?: number; allowedTenantIds?: readonly string[];
+  origin: string; clientId: string; store: EncryptedTokenStore; allowedTenantIds?: readonly string[];
   fetcher?: typeof fetch; now?: () => number;
 }
 const cookieName = "__Host-xero-connect";
@@ -28,15 +28,12 @@ export class XeroOnboarding {
   private transaction?: Transaction;
   private expiryTimer?: ReturnType<typeof setTimeout>;
   private readonly origin: string;
-  private readonly count: number;
   private readonly now: () => number;
   constructor(private readonly options: Options) {
     const origin = new URL(options.origin);
     if (origin.protocol !== "https:" || origin.username || origin.password || origin.search || origin.hash || origin.pathname !== "/") throw new Error("HTTPS onboarding origin required");
     this.origin = origin.origin;
     z.string().min(1).max(128).parse(options.clientId);
-    this.count = z.number().int().min(1).max(5).parse(options.expectedCount ?? 3);
-    if (options.allowedTenantIds?.length && (new Set(options.allowedTenantIds).size !== this.count)) throw new Error("Configured tenants must match onboarding count");
     this.now = options.now ?? Date.now;
   }
 
@@ -52,7 +49,7 @@ export class XeroOnboarding {
   private launch(tx: Transaction) {
     tx.authorization = createXeroAuthorization(this.options.clientId, `${this.origin}/xero/callback`);
     tx.ticket = randomBytes(32).toString("base64url"); tx.cookieHash = undefined;
-    tx.nonceExpires = Math.min(this.now() + 300000, tx.expires); tx.phase = "launch"; tx.rounds++;
+    tx.nonceExpires = Math.min(this.now() + 300000, tx.expires); tx.phase = "launch";
     // Fragment capabilities do not appear in HTTP request URLs or ingress logs.
     return { transactionId: tx.id, startUrl: `${this.origin}/xero/start#ticket=${tx.ticket}`, expiresAt: tx.nonceExpires };
   }
@@ -66,7 +63,7 @@ export class XeroOnboarding {
         if (!existing && renewRevokedGrant) throw new XeroOnboardingError(409);
         const tx: Transaction = { id: randomBytes(24).toString("base64url"), owner, expires: this.now() + 900000,
           nonceExpires: 0, phase: "launch", authorization: createXeroAuthorization(this.options.clientId, `${this.origin}/xero/callback`),
-          connections: [], rounds: 0, renewRevokedGrant };
+          connections: [], renewRevokedGrant };
         this.transaction = tx;
         clearTimeout(this.expiryTimer);
         this.expiryTimer = setTimeout(() => { if (this.transaction === tx) this.transaction = undefined; }, 900000);
@@ -77,25 +74,25 @@ export class XeroOnboarding {
   }
   status(owner: string, id: string) {
     const tx = this.owned(owner, id);
-    return { transactionId: tx.id, phase: tx.phase, expectedCount: this.count, connections: tx.connections,
+    return { transactionId: tx.id, phase: tx.phase, connections: tx.connections,
       expiresAt: tx.expires, readsRequireTenantConfiguration: true };
   }
   next(owner: string, id: string) {
     const tx = this.owned(owner, id);
     const expiredLaunch = ["launch", "authorizing"].includes(tx.phase) && this.now() > tx.nonceExpires;
-    if ((!expiredLaunch && !["review", "failed"].includes(tx.phase)) || tx.connections.length >= this.count || tx.rounds >= 5) throw new XeroOnboardingError(409);
+    if (!expiredLaunch && !["review", "failed"].includes(tx.phase)) throw new XeroOnboardingError(409);
     return this.launch(tx);
   }
   async confirm(owner: string, id: string, tenantIds: string[]) {
     const tx = this.owned(owner, id);
-    const expected = z.array(z.string().uuid()).length(this.count).parse(tenantIds);
+    const expected = z.array(z.string().uuid()).min(1).parse(tenantIds);
     const current = tx.connections.map(connection => connection.tenantId);
-    if (tx.phase !== "review" || !tx.tokens || current.length !== this.count || new Set(expected).size !== this.count
+    if (tx.phase !== "review" || !tx.tokens || current.length !== expected.length || new Set(expected).size !== expected.length
       || expected.some(tenant => !current.includes(tenant)) || this.options.allowedTenantIds?.some(tenant => !expected.includes(tenant))) throw new XeroOnboardingError(409);
     tx.phase = "saving";
     try {
       const refreshedConnections = await getXeroConnections(tx.tokens.access_token, this.options.fetcher);
-      if (this.active() !== tx || refreshedConnections.length !== this.count || refreshedConnections.some(connection => !expected.includes(connection.tenantId))) throw new XeroOnboardingError();
+      if (this.active() !== tx || refreshedConnections.length !== expected.length || refreshedConnections.some(connection => !expected.includes(connection.tenantId))) throw new XeroOnboardingError();
       await this.options.store.withLock(async () => {
         if (this.active() !== tx) throw new XeroOnboardingError();
         const existing = await this.options.store.hasState();
@@ -159,7 +156,7 @@ else fetch('/xero/start', {method:'POST',credentials:'same-origin',redirect:'err
       if (this.active() !== tx || (tx.xeroSubject && tx.xeroSubject !== exchanged.subject)) throw new XeroOnboardingError();
       tx.xeroSubject = exchanged.subject; tx.tokens = exchanged.tokens;
       const connections = await getXeroConnections(exchanged.tokens.access_token, this.options.fetcher);
-      if (this.active() !== tx || connections.length > this.count || connections.length <= tx.connections.length
+      if (this.active() !== tx || connections.length <= tx.connections.length
         || tx.connections.some(old => !connections.some(next => next.tenantId === old.tenantId))
         || connections.some(connection => this.options.allowedTenantIds?.length && !this.options.allowedTenantIds.includes(connection.tenantId))) throw new XeroOnboardingError();
       tx.connections = connections; tx.phase = "review";
@@ -174,7 +171,6 @@ export function configuredOnboarding(config: RemoteConfig): XeroOnboarding | und
   const { XERO_TOKEN_FILE, XERO_TOKEN_KEY_FILE, XERO_CLIENT_ID } = process.env;
   if (!XERO_TOKEN_FILE || !XERO_TOKEN_KEY_FILE || !XERO_CLIENT_ID || process.env.XERO_CLIENT_SECRET || process.env.XERO_CLIENT_BEARER_TOKEN) throw new Error("Hosted onboarding requires durable public PKCE configuration");
   return new XeroOnboarding({ origin: new URL(config.resource).origin, clientId: XERO_CLIENT_ID,
-    expectedCount: z.coerce.number().int().min(1).max(5).parse(process.env.XERO_ORGANISATION_COUNT ?? "3"),
     allowedTenantIds: (process.env.XERO_ALLOWED_TENANT_IDS ?? "").split(",").filter(Boolean).map(value => z.string().uuid().parse(value.trim())),
     store: new EncryptedTokenStore(XERO_TOKEN_FILE, XERO_TOKEN_KEY_FILE, XERO_CLIENT_ID) });
 }

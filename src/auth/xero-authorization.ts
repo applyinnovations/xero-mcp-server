@@ -7,7 +7,7 @@ export const onboardingScopes = ["offline_access", "accounting.banktransactions.
 const tokenSchema = z.object({ access_token: z.string().min(1).max(16384), refresh_token: z.string().min(1).max(16384),
   expires_in: z.number().int().min(61).max(86400), token_type: z.literal("Bearer"), scope: z.string().optional() });
 const connectionsSchema = z.array(z.object({ tenantId: z.string().uuid(), tenantType: z.literal("ORGANISATION"),
-  tenantName: z.string().min(1).max(1000) })).max(5);
+  tenantName: z.string().min(1).max(1000) }));
 export type XeroConnection = z.infer<typeof connectionsSchema>[number];
 
 export function createXeroAuthorization(clientId: string, redirectUri: string) {

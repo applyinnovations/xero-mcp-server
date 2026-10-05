@@ -26,7 +26,7 @@ export function registerOnboardingTools(server: McpServer, onboarding: XeroOnboa
   }, input => result(() => onboarding.next(owner, input.transactionId)));
   server.registerTool("confirm-xero-connection", {
     description: "Owner-only encrypted grant persistence. Run only after the user explicitly confirms the complete displayed organisation list. Pass its exact tenant UUIDs. No accounting writes; healthy existing state is never replaced.",
-    inputSchema: { transactionId, tenantIds: z.array(z.string().uuid()).min(1).max(5), confirmed: z.literal(true) },
+    inputSchema: { transactionId, tenantIds: z.array(z.string().uuid()).min(1), confirmed: z.literal(true) },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
   }, input => result(() => onboarding.confirm(owner, input.transactionId, input.tenantIds)));
 }

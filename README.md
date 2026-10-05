@@ -458,7 +458,6 @@ In addition to durable OAuth paths/client ID and the normal OIDC settings, enabl
 | `MCP_CONNECT_SUBJECTS_JSON` | Nonempty JSON array of exact authorized issuer subject IDs. |
 | `MCP_CONNECT_CLIENT_ID` | Exact approved OAuth client ID: access-token `azp` for `bearer-claim`, `client_id` for `rfc9068`. |
 | `MCP_CONNECT_SCOPE` | Separate required owner scope; default `xero:connect`. |
-| `XERO_ORGANISATION_COUNT` | Intended organisation count, default 3, allowed 1–5. |
 
 Bootstrap permits empty `XERO_ALLOWED_TENANT_IDS` and `{}` for
 `MCP_SUBJECT_TENANTS_JSON` only in explicitly enabled HTTP onboarding. Accounting
@@ -487,7 +486,7 @@ include the owner scope and proceed only when the human authorizes consent:
    `get-xero-connection-status` with the transaction ID to review names and UUIDs.
    Call `continue-xero-connection` only when the owner requests the next consent.
    Use the same Xero user each time; the latest token must see every prior tenant.
-3. Once the complete intended set is visible, ask the owner to confirm that exact
+3. Connect as many organisations as intended, then ask the owner to confirm that exact
    list. Only then call `confirm-xero-connection` with its UUIDs and `confirmed=true`.
    The service rechecks connections and atomically writes encrypted state under
    the refresh/import lock. It never overwrites healthy stored state. Accounting
@@ -500,6 +499,10 @@ tools need separately approved scopes and may fail with this minimal grant.
 The [Starter tier](https://developer.xero.com/pricing) has no monthly fee and allows
 five connections. Its bulk-consent feature is unavailable; connect organisations
 sequentially, then use the latest token for the same user's connected tenants.
+The server does not configure an expected count or impose a three/five-organisation
+completion gate. The owner chooses when to stop and must confirm every currently
+connected tenant exactly; Xero's app/tier limits still apply. Existing response
+byte limits, request timeouts and transaction expiry bound resource use.
 
 One 15-minute transaction is kept in memory per single-writer server. Restart or
 expiry discards unconfirmed tokens; the owner can retry. Declining confirmation
