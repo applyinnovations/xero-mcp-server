@@ -270,3 +270,25 @@ MIT
 ## Security
 
 Please do not commit your `.env` file or any sensitive credentials to version control (it is included in `.gitignore` as a safe default.)
+
+## Explicit organisations and structured bank reads
+
+This fork requires `XERO_ALLOWED_TENANT_IDS` to list the connected tenant UUIDs
+allowed by the server. `list-tenants` returns the intersection of that allowlist
+and the organisations connected to the Xero grant. Every accounting tool requires
+an explicit `tenantId`; a missing, unallowed or disconnected selection fails
+instead of choosing the first organisation. Each invocation has its own client
+and organisation cache, so simultaneous calls cannot change each other's tenant.
+
+`list-bank-transactions` returns full SDK records as structured MCP content and
+JSON text, including zero amounts, transaction/line IDs and nested tracking. It
+reads SPEND/RECEIVE only, defaults to reconciled transactions, and supports
+`bankAccountId`, `type`, `page` and `pageSize` (1–100). Continue paging while
+`pagination.mayHaveMore` is true; the final full page may require an empty follow-up
+page. Concurrent changes can affect pagination, so it is not a snapshot export.
+`get-bank-transaction` retrieves one full SPEND/RECEIVE record by ID.
+
+Write tools are not registered. Enabling recoding requires later approval and a
+Demo Company test proving that the original statement-line match survives an
+in-place update, along with unchanged transaction/line IDs, tracking not selected
+for change, tax, currency and totals. An `isReconciled` flag alone is insufficient.
