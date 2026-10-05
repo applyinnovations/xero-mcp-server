@@ -3,6 +3,8 @@ import dotenv from "dotenv";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { Organisation, TokenSet, TokenSetParameters, XeroClient } from "xero-node";
 import { z } from "zod";
+import { DurableOAuthProvider } from "../auth/oauth-provider.js";
+import { EncryptedTokenStore } from "../auth/token-store.js";
 
 dotenv.config();
 
@@ -71,6 +73,13 @@ export function createTenantClient(tenantId: string): TenantXeroClient {
 }
 
 export function configuredTokenProvider(): XeroTokenProvider {
+  const tokenFile = process.env.XERO_TOKEN_FILE;
+  if (tokenFile) {
+    const keyFile = process.env.XERO_TOKEN_KEY_FILE;
+    const clientId = process.env.XERO_CLIENT_ID;
+    if (!keyFile || !clientId || process.env.XERO_CLIENT_BEARER_TOKEN) throw new Error("Durable OAuth configuration is incomplete or conflicts with a static token");
+    return new DurableOAuthProvider({ store: new EncryptedTokenStore(tokenFile, keyFile, clientId), clientId, clientSecret: process.env.XERO_CLIENT_SECRET });
+  }
   const token = process.env.XERO_CLIENT_BEARER_TOKEN;
   if (token) return { getTokenSet: async () => ({ access_token: token }) };
   const clientId = process.env.XERO_CLIENT_ID;
