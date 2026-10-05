@@ -11,7 +11,7 @@ import { createRemoteServer } from "../remote-mcp-server.js";
 
 const tenantA = "11111111-1111-4111-8111-111111111111";
 const tenantB = "22222222-2222-4222-8222-222222222222";
-const config: RemoteConfig = { issuer: "https://keycloak.example.test/realms/fixture", resource: "https://mcp.example.test/mcp", audience: "https://mcp.example.test/mcp", readScope: "xero:read", subjectTenants: new Map([["alice", [tenantA]], ["bob", [tenantB]]]), allowedOrigins: [] };
+const config: RemoteConfig = { accessTokenProfile: "bearer-claim", issuer: "https://keycloak.example.test/realms/fixture", resource: "https://mcp.example.test/mcp", audience: "https://mcp.example.test/mcp", readScope: "xero:read", subjectTenants: new Map([["alice", [tenantA]], ["bob", [tenantB]]]), allowedOrigins: [] };
 let privateKey: CryptoKey;
 let key: JWTVerifyGetKey;
 beforeAll(async () => {
@@ -21,7 +21,7 @@ beforeAll(async () => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 async function token(overrides: Record<string, unknown> = {}) {
   const now = Math.floor(Date.now() / 1000);
-  return new SignJWT({ iss: config.issuer, aud: config.audience, sub: "alice", iat: now, exp: now + 300, typ: "Bearer", scope: "xero:read", ...overrides }).setProtectedHeader({ alg: "RS256", kid: "fixture" }).sign(privateKey);
+  return new SignJWT({ iss: config.issuer, aud: config.audience, sub: "alice", iat: now, exp: now + 300, typ: "Bearer", scope: "xero:read", ...overrides }).setProtectedHeader({ alg: "RS256", kid: "fixture", typ: "JWT" }).sign(privateKey);
 }
 async function listening() {
   const server = createRemoteServer(config, key);
@@ -42,13 +42,13 @@ describe("Keycloak access verification", () => {
   });
   it("rejects a valid-looking token signed by an unrelated key", async () => {
     const other = await generateKeyPair("RS256");
-    const forged = await new SignJWT({ typ: "Bearer", scope: "xero:read" }).setProtectedHeader({ alg: "RS256", kid: "fixture" }).setIssuer(config.issuer).setAudience(config.audience).setSubject("alice").setIssuedAt().setExpirationTime("5m").sign(other.privateKey);
+    const forged = await new SignJWT({ typ: "Bearer", scope: "xero:read" }).setProtectedHeader({ alg: "RS256", kid: "fixture", typ: "JWT" }).setIssuer(config.issuer).setAudience(config.audience).setSubject("alice").setIssuedAt().setExpirationTime("5m").sign(other.privateKey);
     await expect(createAccessVerifier(config, key)(forged)).rejects.toMatchObject({ status: 401 });
   });
   it("requires HTTPS configuration and an explicit subject allowlist", () => {
-    vi.stubEnv("MCP_KEYCLOAK_ISSUER", "http://keycloak.example/realms/test");
+    vi.stubEnv("MCP_ISSUER", "http://keycloak.example/realms/test");
     expect(() => loadRemoteConfig()).toThrow("HTTPS");
-    vi.stubEnv("MCP_KEYCLOAK_ISSUER", config.issuer);
+    vi.stubEnv("MCP_ISSUER", config.issuer);
     vi.stubEnv("MCP_RESOURCE_URL", config.resource);
     vi.stubEnv("MCP_SUBJECT_TENANTS_JSON", "{}");
     expect(() => loadRemoteConfig()).toThrow("explicitly authorize");

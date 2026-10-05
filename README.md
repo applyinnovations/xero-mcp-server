@@ -333,28 +333,34 @@ that no process owns the lock before removing it. Errors exposed through MCP are
 redacted. Live refresh/revocation testing remains subject to approved Demo Company
 access; tests use only synthetic token sets and mocked HTTP responses.
 
-## Authenticated remote MCP with Keycloak
+## Authenticated remote MCP with an OIDC issuer
 
 Select `MCP_TRANSPORT=http` only when preparing an authenticated remote service.
 HTTP mode requires the durable OAuth configuration above and an explicit server
 `XERO_ALLOWED_TENANT_IDS` allowlist. The default bind is `127.0.0.1:3000`; set
 `MCP_HOST`/`MCP_PORT` for the intended network only during an approved deployment.
 Production traffic must use a TLS reverse proxy. This PR provides no deployment
-or realm configuration changes.
+or identity-provider configuration changes.
 
 Required settings:
 
-- `MCP_KEYCLOAK_ISSUER`: exact HTTPS Keycloak realm issuer, without a trailing slash.
+- `MCP_ISSUER`: exact HTTPS issuer identifier, including a trailing slash if the
+  provider uses one.
+- `MCP_ACCESS_TOKEN_PROFILE`: `rfc9068` (default) or explicitly `bearer-claim`;
+  the contracts below are strict and never automatically fall back.
+- `MCP_JWKS_URL`: optional HTTPS JWKS URL on the same origin as the issuer, without
+  credentials, query or fragment. Omit to use OIDC discovery.
 - `MCP_RESOURCE_URL`: public HTTPS endpoint ending in `/mcp`.
 - `MCP_AUDIENCE`: dedicated token audience for this MCP resource; defaults to its
-  public endpoint URL. Keycloak tokens must include that audience.
+  public endpoint URL. Access tokens must include that audience. Use a resource
+  audience distinct from OIDC login client IDs.
 - `MCP_READ_SCOPE`: required access-token scope, default `xero:read`.
-- `MCP_SUBJECT_TENANTS_JSON`: JSON mapping exact Keycloak subject IDs to arrays of
+- `MCP_SUBJECT_TENANTS_JSON`: JSON mapping exact issuer subject IDs to arrays of
   authorized tenant UUIDs. Subjects absent from this mapping are denied.
 
 The server intersects subject permissions with its tenant allowlist and the
 organisations connected to the Xero grant. An authenticated subject cannot select
-another subject's tenant. The grant is server-managed; Keycloak tokens are never
+another subject's tenant. The grant is server-managed; incoming access tokens are never
 forwarded to Xero. Different POST requests get separate MCP servers and client
 contexts. Write tools remain unavailable.
 
@@ -364,25 +370,68 @@ Protected-resource metadata is public at
 `/.well-known/oauth-protected-resource` and at the path-specific form derived
 from `MCP_RESOURCE_URL` (for example `/.well-known/oauth-protected-resource/mcp`).
 The 401 challenge advertises that metadata and the required scope. Metadata points
-to Keycloak's issuer; clients use its OIDC discovery and an already registered
+to the configured issuer; clients use its OIDC discovery and an already registered
 client with appropriate redirect URIs and PKCE. No registration endpoint, OAuth
 proxy, new credentials or grants are created by this server.
 
-Each POST requires a Bearer JWT verified against the realm certificate endpoint,
-RS256 signature, exact issuer/audience, expiration, Keycloak `typ=Bearer` claim,
-required scope and subject mapping. ID tokens and tokens for unrelated services
-are rejected. Host and Origin are checked; browser origins require an explicit
-HTTPS `MCP_ALLOWED_ORIGINS` allowlist. Tokens in URL query strings are not accepted.
-The server limits request bodies and uses bounded request/JWKS timeouts. Errors
-never include tokens or request bodies.
+Each POST requires a signed JWT access token. Both supported profiles require
+RS256, exact configured `iss`, resource `aud` (string or array containing the
+configured audience), nonempty `sub`, numeric `iat`/`exp`, `exp > iat`, and no
+future issuance beyond five seconds of clock tolerance. Expiration and optional
+`nbf` are checked by `jose`; five seconds of tolerance also applies there. A
+space-delimited string `scope` must contain the exact required scope and the
+subject must have an explicit tenant mapping.
+
+- `rfc9068`: protected header `typ=at+jwt` or `application/at+jwt`; nonempty
+  string `client_id` and `jti` are required. No payload `typ` assumption is made.
+- `bearer-claim`: protected header `typ=JWT` (also `application/JWT`, compared
+  case-insensitively by `jose`) AND payload `typ=Bearer`. This is an explicit
+  compatibility contract for issuers that distinguish access tokens this way.
+  Keycloak is the documented example. Its ID-token `typ=ID` and refresh-token
+  formats are rejected. This profile is never selected by inspecting a token.
+
+Generic JWTs, opaque tokens, other algorithms and ID tokens are unsupported.
+Token purpose is established by the selected signed type contract plus a dedicated
+resource audience; the issuer must reserve that contract for access tokens and
+must not issue ID tokens with this resource audience. This is an administrator
+configuration requirement, not a claim that arbitrary OIDC tokens are safe.
+
+Unless `MCP_JWKS_URL` is configured, the server fetches
+`<issuer-with-final-slash-removed>/.well-known/openid-configuration`. Metadata
+`issuer` must match `MCP_ISSUER` exactly. Its absolute HTTPS `jwks_uri` must share
+the issuer's origin and contain no credentials, query or fragment. Cross-origin
+CDNs are deliberately unsupported. Neither token `iss` nor `jku`/`x5u` can change
+this trust root. Discovery and JWKS requests reject redirects, have a five-second
+complete-response timeout and a 64 KiB body limit. Discovery is shared across
+concurrent requests, cached for the process lifetime after success, and retried
+after a 30-second cooldown on failure. Restart to adopt changed metadata/key
+URLs. `jose` caches JWKS for ten minutes and can refetch for an unknown key after
+a 30-second cooldown. A newly rotated key can therefore be rejected briefly;
+removed cached keys can remain accepted until cache expiry (subject to token
+expiry). There is no introspection or immediate revocation service. Outages fail
+closed when discovery or a needed key cannot be resolved; usable cached keys
+continue validating within the cache policy.
+
+For an existing Keycloak realm, set `MCP_ISSUER` to its exact realm issuer and
+explicitly select `MCP_ACCESS_TOKEN_PROFILE=bearer-claim`. Leave `MCP_JWKS_URL`
+blank to discover its actual key endpoint. Configure the dedicated resource
+audience, scope and subject mapping using the settings above. No provider route
+or realm name is encoded in the server.
+
+Host and Origin are checked; browser origins require an explicit HTTPS
+`MCP_ALLOWED_ORIGINS` allowlist. Tokens in URL query strings are not accepted.
+The server limits request bodies. Errors never include tokens or request bodies.
 
 This is stateless Streamable HTTP with JSON responses using the pinned MCP SDK's
 negotiated protocol (tested with `2025-11-25`). Standalone GET/SSE, persistent
 sessions and server-initiated notifications are not provided. StdIO remains the
 default. Synthetic integration tests use local JWT signing keys, local HTTP and
 mocked Xero reads; they do not access the existing Keycloak realm or Xero.
+Authentication tests exercise synthetic Keycloak-style and RFC 9068 discovery/
+token profiles, failures and key rotation. These prove the defined contracts in
+fixtures, not live compatibility with a provider or client application.
 
-Before rollout, verify the actual realm's issuer, signing algorithm, dedicated
+Before rollout, verify the actual issuer's discovery, selected token profile, signing algorithm, dedicated
 audience, required scope, subject IDs and client discovery/PKCE compatibility.
 Validate token expiration/key rotation and test each authorised organisation with
 approved Demo Company access. Real recoding still requires explicit approval and
