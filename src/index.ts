@@ -3,8 +3,25 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { XeroMcpServer } from "./server/xero-mcp-server.js";
 import { ToolFactory } from "./tools/tool-factory.js";
+import { createRemoteServer } from "./server/remote-mcp-server.js";
+import { loadRemoteConfig } from "./auth/remote-auth.js";
+import { configuredTenantIds, configuredTokenProvider } from "./clients/xero-client.js";
+import { z } from "zod";
 
 const main = async () => {
+  const transportMode = process.env.MCP_TRANSPORT ?? "stdio";
+  if (transportMode === "http") {
+    if (!process.env.XERO_TOKEN_FILE) throw new Error("Remote MCP requires durable OAuth mode");
+    configuredTenantIds();
+    configuredTokenProvider();
+    const config = loadRemoteConfig();
+    const port = z.coerce.number().int().min(1).max(65535).parse(process.env.MCP_PORT ?? "3000");
+    const http = createRemoteServer(config);
+    http.listen(port, process.env.MCP_HOST ?? "127.0.0.1", () => console.error("Authenticated remote MCP listening"));
+    http.on("error", () => { console.error("Remote MCP listener failed"); process.exitCode = 1; });
+    return;
+  }
+  if (transportMode !== "stdio") throw new Error("Unsupported MCP transport");
   // Create an MCP server
   const server = XeroMcpServer.GetServer();
 
