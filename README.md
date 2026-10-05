@@ -222,8 +222,8 @@ The multistage build pins the official Node 24 LTS image by digest, runs the bui
 and tests, and installs only production dependencies in the final image. It runs
 as the `node` user and includes the original MIT license. The build context uses
 an allowlist; `.env` files, Git history, dependencies and unrelated local files
-are excluded. The container uses the existing stdio transport and exposes no
-HTTP port.
+are excluded. The container uses the existing stdio transport by default. Authenticated HTTP
+mode is opt-in and described below.
 
 Pass credentials only at runtime using an environment file kept outside the
 build context:
@@ -332,3 +332,59 @@ directory. Requests fail closed after a bounded wait; an operator must establish
 that no process owns the lock before removing it. Errors exposed through MCP are
 redacted. Live refresh/revocation testing remains subject to approved Demo Company
 access; tests use only synthetic token sets and mocked HTTP responses.
+
+## Authenticated remote MCP with Keycloak
+
+Select `MCP_TRANSPORT=http` only when preparing an authenticated remote service.
+HTTP mode requires the durable OAuth configuration above and an explicit server
+`XERO_ALLOWED_TENANT_IDS` allowlist. The default bind is `127.0.0.1:3000`; set
+`MCP_HOST`/`MCP_PORT` for the intended network only during an approved deployment.
+Production traffic must use a TLS reverse proxy. This PR provides no deployment
+or realm configuration changes.
+
+Required settings:
+
+- `MCP_KEYCLOAK_ISSUER`: exact HTTPS Keycloak realm issuer, without a trailing slash.
+- `MCP_RESOURCE_URL`: public HTTPS endpoint ending in `/mcp`.
+- `MCP_AUDIENCE`: dedicated token audience for this MCP resource; defaults to its
+  public endpoint URL. Keycloak tokens must include that audience.
+- `MCP_READ_SCOPE`: required access-token scope, default `xero:read`.
+- `MCP_SUBJECT_TENANTS_JSON`: JSON mapping exact Keycloak subject IDs to arrays of
+  authorized tenant UUIDs. Subjects absent from this mapping are denied.
+
+The server intersects subject permissions with its tenant allowlist and the
+organisations connected to the Xero grant. An authenticated subject cannot select
+another subject's tenant. The grant is server-managed; Keycloak tokens are never
+forwarded to Xero. Different POST requests get separate MCP servers and client
+contexts. Write tools remain unavailable.
+
+The internal endpoint is `/mcp`. If the public endpoint has a path prefix, the
+reverse proxy maps it to this internal path and forwards the original Host.
+Protected-resource metadata is public at
+`/.well-known/oauth-protected-resource` and at the path-specific form derived
+from `MCP_RESOURCE_URL` (for example `/.well-known/oauth-protected-resource/mcp`).
+The 401 challenge advertises that metadata and the required scope. Metadata points
+to Keycloak's issuer; clients use its OIDC discovery and an already registered
+client with appropriate redirect URIs and PKCE. No registration endpoint, OAuth
+proxy, new credentials or grants are created by this server.
+
+Each POST requires a Bearer JWT verified against the realm certificate endpoint,
+RS256 signature, exact issuer/audience, expiration, Keycloak `typ=Bearer` claim,
+required scope and subject mapping. ID tokens and tokens for unrelated services
+are rejected. Host and Origin are checked; browser origins require an explicit
+HTTPS `MCP_ALLOWED_ORIGINS` allowlist. Tokens in URL query strings are not accepted.
+The server limits request bodies and uses bounded request/JWKS timeouts. Errors
+never include tokens or request bodies.
+
+This is stateless Streamable HTTP with JSON responses using the pinned MCP SDK's
+negotiated protocol (tested with `2025-11-25`). Standalone GET/SSE, persistent
+sessions and server-initiated notifications are not provided. StdIO remains the
+default. Synthetic integration tests use local JWT signing keys, local HTTP and
+mocked Xero reads; they do not access the existing Keycloak realm or Xero.
+
+Before rollout, verify the actual realm's issuer, signing algorithm, dedicated
+audience, required scope, subject IDs and client discovery/PKCE compatibility.
+Validate token expiration/key rotation and test each authorised organisation with
+approved Demo Company access. Real recoding still requires explicit approval and
+proof that the original statement-line match survives; no flag-setting,
+unreconcile/delete/recreate workaround is enabled.
