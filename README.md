@@ -545,3 +545,26 @@ provenance. PipelineRun results expose the image digest; deployments should pin
 that tested digest. The shared builder/registry do not enforce immutable SHA tags
 against a rebuild, and the current semver pruner skips SHA-only repositories.
 CI does not connect to Xero, enable writes or deploy the MCP service.
+
+## Read-only bank recoding proposals
+
+`get-bank-recode-proposal` prepares an account-code diff for existing reconciled
+SPEND/RECEIVE line IDs. It performs only bank-transaction and account GETs, returns
+complete before/proposed records with a tenant-bound SHA-256 snapshot, and never
+executes an update. IDs, tracking, tax, currency and totals are retained; unsupported
+fields and incomplete records are rejected. A proposed code must be an active
+non-bank chart account. Explicit existing tax coding is preserved.
+
+`XERO_RECODING_TENANT_IDS` is a separate comma-separated proposal allowlist,
+defaulting to empty and required to be a subset of `XERO_ALLOWED_TENANT_IDS`.
+Configure only the intended coding organisation; other readable organisations
+cannot use this proposal tool. Existing subject and connected-tenant checks also
+apply. No production proposal configuration or OAuth scopes are changed by this PR.
+
+The current read grant is sufficient for proposals. Executing a recode requires
+another explicitly approved consent for `accounting.banktransactions`; refresh
+cannot broaden it. Write tools remain unregistered. The
+[Demo Company validation plan](docs/bank-recoding-demo.md) defines the actual
+statement-linkage proof, scope separation, action approval, private audit and
+stale-state limitations required before an execution PR. `IsReconciled` alone
+is not proof, and a snapshot hash is not an atomic Xero write precondition.
