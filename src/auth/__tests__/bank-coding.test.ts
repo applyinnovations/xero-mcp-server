@@ -11,13 +11,13 @@ let directory: string;
 beforeEach(async () => { directory = await mkdtemp(join(tmpdir(), "coding-auth-")); });
 afterEach(async () => { vi.restoreAllMocks(); vi.unstubAllEnvs(); await rm(directory, { recursive: true, force: true }); });
 
-it("keeps activation disabled until exact tenant, action policy, grant choice and Demo proof exist", () => {
+it("keeps activation disabled by default and requires exact tenant, action policy and grant choice", () => {
   vi.stubEnv("XERO_RECODING_ENABLED", "false"); expect(loadBankCodingConfig({}, "xero:read")).toBeUndefined();
   vi.stubEnv("XERO_RECODING_ENABLED", "true"); vi.stubEnv("XERO_RECODING_TENANT_IDS", tenantId);
   vi.stubEnv("MCP_RECODE_SUBJECTS_JSON", '["owner"]'); vi.stubEnv("MCP_RECODE_CLIENT_ID", "client"); vi.stubEnv("XERO_RECODING_GRANT_MODE", "shared");
-  expect(() => loadBankCodingConfig({ owner: [tenantId] }, "xero:read")).toThrow("Demo");
-  vi.stubEnv("XERO_RECODING_LINKAGE_VALIDATED", "true");
   expect(loadBankCodingConfig({ owner: [tenantId] }, "xero:read")).toEqual(config);
+  vi.stubEnv("XERO_RECODING_GRANT_MODE", ""); expect(() => loadBankCodingConfig({ owner: [tenantId] }, "xero:read")).toThrow();
+  vi.stubEnv("XERO_RECODING_GRANT_MODE", "shared");
   expect(() => loadBankCodingConfig({ owner: others }, "xero:read")).toThrow("read permission");
   vi.stubEnv("MCP_RECODE_SCOPE", "xero:read"); expect(() => loadBankCodingConfig({ owner: [tenantId] }, "xero:read")).toThrow("separate action");
   vi.stubEnv("MCP_RECODE_SCOPE", "xero:code"); vi.stubEnv("XERO_RECODING_TENANT_IDS", [tenantId, ...others].join(","));

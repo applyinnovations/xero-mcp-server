@@ -288,10 +288,12 @@ reads SPEND/RECEIVE only, defaults to reconciled transactions, and supports
 page. Concurrent changes can affect pagination, so it is not a snapshot export.
 `get-bank-transaction` retrieves one full SPEND/RECEIVE record by ID.
 
-Write tools are disabled by default. Enabling account coding requires approval and a
-Demo Company test proving that the original statement-line match survives an
-in-place update, along with unchanged transaction/line IDs, tracking not selected
-for change, tax, currency and totals. An `isReconciled` flag alone is insufficient.
+Write tools are disabled by default. An explicitly approved first account-coding
+test may use one selected transaction in the intended live organisation. Capture
+its original coding, change only the approved account assignment, and verify the
+unchanged transaction/line IDs, tracking, tax, currency, totals and actual statement
+match before wider use. A Demo Company is optional; `isReconciled` alone is not
+linkage proof.
 
 ## Durable OAuth refresh
 
@@ -330,8 +332,8 @@ This store is for one grant on a single host/local filesystem, not distributed
 replicas or network filesystems. A crash during refresh may leave a `.lock`
 directory. Requests fail closed after a bounded wait; an operator must establish
 that no process owns the lock before removing it. Errors exposed through MCP are
-redacted. Live refresh/revocation testing remains subject to approved Demo Company
-access; tests use only synthetic token sets and mocked HTTP responses.
+redacted. Live refresh/revocation tests require separately approved access;
+automated tests use only synthetic token sets and mocked HTTP responses.
 
 ## Authenticated remote MCP with an OIDC issuer
 
@@ -433,10 +435,10 @@ fixtures, not live compatibility with a provider or client application.
 
 Before rollout, verify the actual issuer's discovery, selected token profile, signing algorithm, dedicated
 audience, required scope, subject IDs and client discovery/PKCE compatibility.
-Validate token expiration/key rotation and test each authorised organisation with
-approved Demo Company access. Real recoding still requires explicit approval and
-proof that the original statement-line match survives; no flag-setting,
-unreconcile/delete/recreate workaround is enabled.
+Validate token expiration/key rotation and authorised reads with approved access.
+An explicitly approved first live account-coding test can establish preservation
+and actual statement linkage for its selected transaction. Verify that result
+before wider use; no flag-setting, unreconcile/delete/recreate workaround is enabled.
 
 
 ## Hosted owner-authorized Xero PKCE onboarding
@@ -527,8 +529,9 @@ protected. Back up the current encrypted state and key separately.
 
 Tests use synthetic keys/tokens and mocked Xero endpoints. Real app consent,
 browser/hosted-client behavior, issued-token/scopes, all organisations and durable
-refresh/restart require separately approved live acceptance. Account coding remains disabled until its independent Demo Company proof and
-action/OAuth approvals are complete.
+refresh/restart require separately approved live acceptance. Account coding is
+disabled by default; an approved first live test requires the existing action/OAuth
+permissions and the user's exact transaction/account selection.
 
 ### xlab CI
 
@@ -599,10 +602,10 @@ exactly one `XERO_RECODING_TENANT_IDS` entry, mapped read subjects in
 with both read and coding scope see the mutation tool. Other connected tenants
 retain read-only access. Stdio never registers the coding tool.
 
-Activation additionally requires `XERO_RECODING_LINKAGE_VALIDATED=true`, backed by
-actual [Demo evidence](docs/bank-recoding-demo.md), and an explicit approved
-`XERO_RECODING_GRANT_MODE=shared` or `separate`. The proof flag is an operator
-assertion, not an API test. Shared uses the existing grant; adding
+Choose an explicit approved `XERO_RECODING_GRANT_MODE=shared` or `separate`.
+An [approved narrow live test](docs/bank-account-coding-validation.md) may establish
+field preservation and actual statement linkage; no Demo-first requirement or
+proof assertion is imposed at startup. Shared uses the existing grant; adding
 `accounting.banktransactions` broadens that grant across all connected tenants,
 while this server restricts coding to the sole configured tenant. Separate uses
 an independently approved PKCE app/grant in `XERO_RECODING_TOKEN_FILE`,
@@ -612,8 +615,10 @@ Grant construction, consent scope and connected-tenant checks belong to the auth
 layer. Neither consent nor credentials are created by this tool.
 
 Xero documents no conditional `If-Match`; optional preconditions and the local
-in-flight guard do not eliminate outside edits between GET and POST. Agree an
-operational editing exclusion procedure before activation. Receipts always report
+in-flight guard do not eliminate outside edits between GET and POST. Coordinate
+other edits of the selected transaction during the first test. Receipts always report
 `statementLinkageVerified: false`; `IsReconciled` alone cannot prove the actual
-statement match survived. Grant choice/consent, Demo proof, merge, production
-activation, image publication and deployment remain separate decisions.
+statement match survived. Select and approve the exact transaction/account change,
+then witness its result and existing statement link in Xero before wider use.
+Grant choice/consent, merge, activation, image publication and deployment remain
+separate decisions.

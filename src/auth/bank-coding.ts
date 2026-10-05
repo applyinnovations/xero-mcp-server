@@ -19,7 +19,6 @@ export function loadBankCodingConfig(mapping: Record<string, string[]>, readScop
   const scope = z.string().regex(/^[A-Za-z0-9:_-]+$/).parse(process.env.MCP_RECODE_SCOPE ?? "xero:code");
   if (scope === readScope || scope === connectScope) throw new Error("Coding requires a separate action scope");
   const grantMode = z.enum(["shared", "separate"]).parse(process.env.XERO_RECODING_GRANT_MODE);
-  if (process.env.XERO_RECODING_LINKAGE_VALIDATED !== "true") throw new Error("Coding activation requires approved Demo linkage evidence");
   return { tenantId, subjects, clientId, scope, enabled: true, grantMode };
 }
 
