@@ -3,22 +3,31 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { z } from "zod";
 import { EncryptedTokenStore, StoredTokens } from "./token-store.js";
 import type { RemoteConfig } from "./remote-auth.js";
-import { createXeroAuthorization, exchangeXeroCode, getXeroConnections, XeroConnection } from "./xero-authorization.js";
+import { approvedXeroScopes, configuredXeroScopes, createXeroAuthorization, exchangeXeroCode, getXeroConnections, xeroTokenIdentity, XeroConnection } from "./xero-authorization.js";
 
 type Phase = "launch" | "authorizing" | "exchanging" | "review" | "failed" | "saving" | "complete";
 interface Transaction {
   id: string; owner: string; expires: number; nonceExpires: number; phase: Phase; ticket?: string; cookieHash?: Buffer;
   authorization: ReturnType<typeof createXeroAuthorization>; tokens?: StoredTokens; xeroSubject?: string;
   connections: XeroConnection[];
-  renewRevokedGrant: boolean;
+  mode: "new" | "renew" | "recover";
+  previousScopes: readonly string[]; previousSubject?: string;
 }
 interface Options {
   origin: string; clientId: string; store: EncryptedTokenStore; allowedTenantIds?: readonly string[];
-  fetcher?: typeof fetch; now?: () => number;
+  scopes?: readonly string[]; fetcher?: typeof fetch; now?: () => number;
 }
 const cookieName = "__Host-xero-connect";
 const digest = (value: string) => createHash("sha256").update(value).digest();
 const equal = (a: string, b: string) => timingSafeEqual(digest(a), digest(b));
+const scopesOf = (scope?: string) => scope?.split(/\s+/).filter(Boolean) ?? [];
+const sameScopes = (a: readonly string[], b: readonly string[]) => a.every(scope => b.includes(scope)) && b.every(scope => a.includes(scope));
+function storedSubject(tokens: StoredTokens, clientId: string): string {
+  const identity = xeroTokenIdentity(tokens.access_token, clientId);
+  const issuedScopes = typeof identity.scope === "string" ? scopesOf(identity.scope) : identity.scope;
+  if (!sameScopes(scopesOf(tokens.scope), issuedScopes)) throw new XeroOnboardingError(409);
+  return identity.sub;
+}
 const browserPaths = new Set(["/xero/start", "/xero/callback", "/xero/result"]);
 export class XeroOnboardingError extends Error {
   constructor(public readonly status = 400) { super("Xero connection could not be completed; inspect setup or retry after review"); }
@@ -29,12 +38,14 @@ export class XeroOnboarding {
   private expiryTimer?: ReturnType<typeof setTimeout>;
   private readonly origin: string;
   private readonly now: () => number;
+  private readonly scopes: readonly string[];
   constructor(private readonly options: Options) {
     const origin = new URL(options.origin);
     if (origin.protocol !== "https:" || origin.username || origin.password || origin.search || origin.hash || origin.pathname !== "/") throw new Error("HTTPS onboarding origin required");
     this.origin = origin.origin;
     z.string().min(1).max(128).parse(options.clientId);
     this.now = options.now ?? Date.now;
+    this.scopes = Object.freeze(approvedXeroScopes(options.scopes ?? configuredXeroScopes()));
   }
 
   private active() {
@@ -47,23 +58,34 @@ export class XeroOnboarding {
     return tx;
   }
   private launch(tx: Transaction) {
-    tx.authorization = createXeroAuthorization(this.options.clientId, `${this.origin}/xero/callback`);
+    tx.authorization = createXeroAuthorization(this.options.clientId, `${this.origin}/xero/callback`, this.scopes);
+    tx.tokens = undefined;
     tx.ticket = randomBytes(32).toString("base64url"); tx.cookieHash = undefined;
     tx.nonceExpires = Math.min(this.now() + 300000, tx.expires); tx.phase = "launch";
     // Fragment capabilities do not appear in HTTP request URLs or ingress logs.
-    return { transactionId: tx.id, startUrl: `${this.origin}/xero/start#ticket=${tx.ticket}`, expiresAt: tx.nonceExpires };
+    return { transactionId: tx.id, startUrl: `${this.origin}/xero/start#ticket=${tx.ticket}`, expiresAt: tx.nonceExpires,
+      requestedScopes: [...this.scopes], renewingGrant: tx.mode !== "new" };
   }
-  async begin(owner: string, renewRevokedGrant = false) {
+  async begin(owner: string, renewal: { renewGrant?: boolean; renewRevokedGrant?: boolean } = {}) {
     try {
       return await this.options.store.withLock(async () => {
         await this.options.store.validateKey();
         if (this.active()) throw new XeroOnboardingError(409);
+        if (renewal.renewGrant && renewal.renewRevokedGrant) throw new XeroOnboardingError(409);
+        const mode = renewal.renewGrant ? "renew" : renewal.renewRevokedGrant ? "recover" : "new";
         const existing = await this.options.store.hasState();
-        if (existing && (!renewRevokedGrant || !(await this.options.store.read()).reauthorizeRequired || !this.options.allowedTenantIds?.length)) throw new XeroOnboardingError(409);
-        if (!existing && renewRevokedGrant) throw new XeroOnboardingError(409);
+        if (mode === "new" ? existing : !existing || !this.options.allowedTenantIds?.length) throw new XeroOnboardingError(409);
+        const previous = existing ? await this.options.store.read() : undefined;
+        if (mode === "recover" && !previous?.reauthorizeRequired) throw new XeroOnboardingError(409);
+        const previousScopes = scopesOf(previous?.scope);
+        if (previousScopes.some(scope => !this.scopes.includes(scope))) throw new XeroOnboardingError(409);
+        // Healthy renewal binds to the existing consenting account. A marked
+        // revoked import can lack a usable JWT; recovery retains its tenant gate.
+        const previousSubject = mode === "renew" ? storedSubject(previous!, this.options.clientId) : undefined;
+        if (mode === "renew" && !previousScopes.length) throw new XeroOnboardingError(409);
         const tx: Transaction = { id: randomBytes(24).toString("base64url"), owner, expires: this.now() + 900000,
-          nonceExpires: 0, phase: "launch", authorization: createXeroAuthorization(this.options.clientId, `${this.origin}/xero/callback`),
-          connections: [], renewRevokedGrant };
+          nonceExpires: 0, phase: "launch", authorization: createXeroAuthorization(this.options.clientId, `${this.origin}/xero/callback`, this.scopes),
+          connections: [], mode, previousScopes, previousSubject, xeroSubject: previousSubject };
         this.transaction = tx;
         clearTimeout(this.expiryTimer);
         this.expiryTimer = setTimeout(() => { if (this.transaction === tx) this.transaction = undefined; }, 900000);
@@ -75,7 +97,8 @@ export class XeroOnboarding {
   status(owner: string, id: string) {
     const tx = this.owned(owner, id);
     return { transactionId: tx.id, phase: tx.phase, connections: tx.connections,
-      expiresAt: tx.expires, readsRequireTenantConfiguration: true };
+      expiresAt: tx.expires, requestedScopes: [...this.scopes], grantedScopes: tx.tokens ? scopesOf(tx.tokens.scope) : undefined,
+      renewingGrant: tx.mode !== "new", readsRequireTenantConfiguration: true };
   }
   next(owner: string, id: string) {
     const tx = this.owned(owner, id);
@@ -96,7 +119,14 @@ export class XeroOnboarding {
       await this.options.store.withLock(async () => {
         if (this.active() !== tx) throw new XeroOnboardingError();
         const existing = await this.options.store.hasState();
-        if (tx.renewRevokedGrant ? !existing || !(await this.options.store.read()).reauthorizeRequired : existing) throw new XeroOnboardingError(409);
+        if (tx.mode === "new" ? existing : !existing) throw new XeroOnboardingError(409);
+        if (tx.mode !== "new") {
+          const previous = await this.options.store.read();
+          if (tx.mode === "recover" && !previous.reauthorizeRequired) throw new XeroOnboardingError(409);
+          const currentScopes = scopesOf(previous.scope);
+          if (!sameScopes(tx.previousScopes, currentScopes)
+            || (tx.previousSubject && storedSubject(previous, this.options.clientId) !== tx.previousSubject)) throw new XeroOnboardingError(409);
+        }
         await this.options.store.write(tx.tokens!);
       });
       tx.tokens = undefined; tx.phase = "complete";
@@ -152,15 +182,15 @@ else fetch('/xero/start', {method:'POST',credentials:'same-origin',redirect:'err
     response.setHeader("Set-Cookie", `${cookieName}=; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`);
     try {
       if (errors.length) throw new XeroOnboardingError();
-      const exchanged = await exchangeXeroCode(this.options.clientId, `${this.origin}/xero/callback`, codes[0], tx.authorization.verifier, this.options.fetcher);
+      const exchanged = await exchangeXeroCode(this.options.clientId, `${this.origin}/xero/callback`, codes[0], tx.authorization.verifier, this.options.fetcher, undefined, this.scopes);
       if (this.active() !== tx || (tx.xeroSubject && tx.xeroSubject !== exchanged.subject)) throw new XeroOnboardingError();
       tx.xeroSubject = exchanged.subject; tx.tokens = exchanged.tokens;
       const connections = await getXeroConnections(exchanged.tokens.access_token, this.options.fetcher);
-      if (this.active() !== tx || connections.length <= tx.connections.length
+      if (this.active() !== tx || (tx.mode === "new" ? connections.length <= tx.connections.length : connections.length < tx.connections.length)
         || tx.connections.some(old => !connections.some(next => next.tenantId === old.tenantId))
         || connections.some(connection => this.options.allowedTenantIds?.length && !this.options.allowedTenantIds.includes(connection.tenantId))) throw new XeroOnboardingError();
       tx.connections = connections; tx.phase = "review";
-    } catch { tx.phase = "failed"; }
+    } catch { tx.tokens = undefined; tx.phase = "failed"; }
     response.writeHead(303, { Location: `${this.origin}/xero/result`, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" }); response.end();
     return true;
   }

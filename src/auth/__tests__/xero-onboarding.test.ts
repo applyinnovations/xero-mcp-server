@@ -10,7 +10,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { EncryptedTokenStore } from "../token-store.js";
 import { XeroOnboarding } from "../xero-onboarding.js";
-import { onboardingScopes, exchangeXeroCode, getXeroConnections } from "../xero-authorization.js";
+import { configuredXeroScopes, onboardingScopes, exchangeXeroCode, getXeroConnections } from "../xero-authorization.js";
 import { RemoteConfig, loadRemoteConfig } from "../remote-auth.js";
 import { createRemoteServer } from "../../server/remote-mcp-server.js";
 
@@ -24,6 +24,7 @@ const config: RemoteConfig = { issuer: "https://issuer.example.test/realm", reso
 let directory: string; let statePath: string; let store: EncryptedTokenStore;
 let key: JWTVerifyGetKey; let privateKey: CryptoKey;
 let now: number; let round: number; let xeroSubject: string; let connectionOverride: unknown;
+let grantedScopes: readonly string[];
 let request: ReturnType<typeof vi.fn<typeof fetch>>;
 const closing: (() => Promise<void>)[] = [];
 function issuedToken(subject = "fixture-xero-user", scopes: readonly string[] = onboardingScopes) {
@@ -40,7 +41,7 @@ beforeEach(async () => {
   const keyPath = join(directory, "key");
   await writeFile(keyPath, Buffer.alloc(32, 7).toString("base64"), { mode: 0o600 });
   store = new EncryptedTokenStore(statePath, keyPath, clientId);
-  now = 1000000; round = 0; xeroSubject = "fixture-xero-user"; connectionOverride = undefined;
+  now = 1000000; round = 0; xeroSubject = "fixture-xero-user"; connectionOverride = undefined; grantedScopes = onboardingScopes;
   vi.stubEnv("MCP_TRANSPORT", "http"); vi.stubEnv("XERO_ONBOARDING_ENABLED", "true"); vi.stubEnv("XERO_ALLOWED_TENANT_IDS", "");
   request = vi.fn(async (input, options) => {
     expect(options?.redirect).toBe("error"); expect(options?.signal).toBeDefined();
@@ -51,8 +52,8 @@ beforeEach(async () => {
       expect(body.get("client_id")).toBe(clientId); expect(body.get("redirect_uri")).toBe(`${origin}/xero/callback`);
       expect(body.get("code_verifier")?.length).toBeGreaterThanOrEqual(43);
       expect(options?.headers).not.toHaveProperty("Authorization");
-      return new Response(JSON.stringify({ access_token: issuedToken(xeroSubject), refresh_token: `invalid-fixture-refresh-${round}`,
-        expires_in: 1800, token_type: "Bearer", scope: onboardingScopes.join(" ") }));
+      return new Response(JSON.stringify({ access_token: issuedToken(xeroSubject, grantedScopes), refresh_token: `invalid-fixture-refresh-${round}`,
+        expires_in: 1800, token_type: "Bearer", scope: grantedScopes.join(" ") }));
     }
     expect(input).toBe("https://api.xero.com/connections");
     return new Response(JSON.stringify(connectionOverride ?? connections.slice(0, round)));
@@ -62,8 +63,8 @@ afterEach(async () => {
   for (const close of closing.splice(0)) await close();
   await rm(directory, { recursive: true, force: true }); vi.unstubAllEnvs(); vi.restoreAllMocks();
 });
-async function endpoint(allowedTenantIds: string[] = []) {
-  const onboarding = new XeroOnboarding({ origin, clientId, store, allowedTenantIds, fetcher: request, now: () => now });
+async function endpoint(allowedTenantIds: string[] = [], scopes?: readonly string[]) {
+  const onboarding = new XeroOnboarding({ origin, clientId, store, allowedTenantIds, scopes, fetcher: request, now: () => now });
   const server = createRemoteServer(config, key, onboarding);
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -86,14 +87,14 @@ async function endpoint(allowedTenantIds: string[] = []) {
   return { onboarding, base, call };
 }
 type Endpoint = Awaited<ReturnType<typeof endpoint>>;
-async function launch(web: Endpoint, link: { startUrl: string }) {
+async function launch(web: Endpoint, link: { startUrl: string }, scopes: readonly string[] = onboardingScopes) {
   const ticket = new URLSearchParams(new URL(link.startUrl).hash.slice(1)).get("ticket");
   const response = await web.call("/xero/start", { method: "POST", headers: { Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify({ ticket }) });
   expect(response.status).toBe(200);
   expect(response.headers.get("Set-Cookie")).toContain("Secure; HttpOnly; SameSite=Lax; Path=/");
   const authorization = new URL((await response.json()).authorizationUrl);
   expect(authorization.origin).toBe("https://login.xero.com");
-  expect(authorization.searchParams.get("scope")).toBe(onboardingScopes.join(" "));
+  expect(authorization.searchParams.get("scope")).toBe(scopes.join(" "));
   expect(authorization.searchParams.get("code_challenge_method")).toBe("S256");
   expect(authorization.searchParams.get("redirect_uri")).toBe(`${origin}/xero/callback`);
   return { authorization, cookie: response.headers.get("Set-Cookie")!.split(";")[0], ticket };
@@ -212,10 +213,10 @@ describe("hosted PKCE onboarding", () => {
     await expect(web.onboarding.begin("owner")).rejects.toThrow();
     await chmod(join(directory, "key"), 0o600);
     await store.initialize({ access_token: "invalid-old", refresh_token: "invalid-old", expires_at: 1 });
-    await expect(web.onboarding.begin("owner", true)).rejects.toThrow();
+    await expect(web.onboarding.begin("owner", { renewRevokedGrant: true })).rejects.toThrow();
     await store.withLock(() => store.write({ access_token: "invalid-old", refresh_token: "invalid-old", expires_at: 1, reauthorizeRequired: true }));
     await expect(web.onboarding.begin("owner")).rejects.toThrow();
-    let link = await web.onboarding.begin("owner", true);
+    let link = await web.onboarding.begin("owner", { renewRevokedGrant: true });
     for (let n = 1; n <= 3; n++) { await callback(web, await launch(web, link)); if (n < 3) link = web.onboarding.next("owner", link.transactionId); }
     expect((await web.onboarding.confirm("owner", link.transactionId, tenants)).phase).toBe("complete");
     expect((await store.read()).reauthorizeRequired).toBeUndefined();
@@ -230,6 +231,140 @@ describe("hosted PKCE onboarding", () => {
     await expect(getXeroConnections("invalid", fake)).rejects.toThrow("Oversized");
     fake.mockResolvedValue(new Response("", { status: 302 }));
     await expect(exchangeXeroCode(clientId, `${origin}/xero/callback`, "invalid", "invalid", fake)).rejects.toThrow();
+  });
+});
+
+async function healthyGrant() {
+  const tokens = { access_token: issuedToken(), refresh_token: "invalid-existing-refresh", expires_at: 9999999999,
+    scope: onboardingScopes.join(" ") };
+  await store.initialize(tokens);
+  return { tokens, disk: await readFile(statePath, "utf8") };
+}
+
+// No feature-specific consent branch: the same configured scope path covers
+// unrelated API resources, and only the operator controls that configuration.
+describe("configured OAuth renewal", () => {
+  it("validates the existing app-wide setting, defaults to reads, and requires offline access", () => {
+    vi.stubEnv("XERO_SCOPES", "offline_access  accounting.contacts.read\naccounting.contacts.read");
+    expect(configuredXeroScopes()).toEqual(["offline_access", "accounting.contacts.read"]);
+    for (const invalid of ["", "accounting.contacts", "offline_access invalid?scope"]) {
+      vi.stubEnv("XERO_SCOPES", invalid); expect(() => configuredXeroScopes()).toThrow();
+    }
+    delete process.env.XERO_SCOPES;
+    expect(configuredXeroScopes()).toEqual(onboardingScopes);
+  });
+
+  it("uses configured generic scopes for initial consent and captures them before browser launch", async () => {
+    const scopes = ["offline_access", "accounting.contacts.read"];
+    vi.stubEnv("XERO_SCOPES", scopes.join(" ")); grantedScopes = scopes;
+    const web = await endpoint();
+    vi.stubEnv("XERO_SCOPES", "offline_access accounting.invoices");
+    const link = await web.onboarding.begin("owner");
+    expect(link.requestedScopes).toEqual(scopes); expect(link.renewingGrant).toBe(false);
+    await callback(web, await launch(web, link, scopes));
+    expect(web.onboarding.status("owner", link.transactionId).grantedScopes).toEqual(scopes);
+    await web.onboarding.confirm("owner", link.transactionId, tenants.slice(0, 1));
+    expect((await store.read()).scope).toBe(scopes.join(" "));
+  });
+
+  it.each(["accounting.contacts", "accounting.invoices", "accounting.banktransactions"])("renews the same healthy grant for approved %s consent only after owner confirmation", async scope => {
+    const previous = await healthyGrant();
+    const scopes = [...onboardingScopes, scope]; grantedScopes = scopes; connectionOverride = connections;
+    const web = await endpoint(tenants, scopes);
+    await expect(web.onboarding.begin("owner")).rejects.toThrow();
+    await expect(web.onboarding.begin("owner", { renewRevokedGrant: true })).rejects.toThrow();
+    await expect(web.onboarding.begin("owner", { renewGrant: true, renewRevokedGrant: true })).rejects.toThrow();
+    const link = await web.onboarding.begin("owner", { renewGrant: true });
+    expect(request).not.toHaveBeenCalled(); expect(link.requestedScopes).toEqual(scopes); expect(link.renewingGrant).toBe(true);
+    expect(await readFile(statePath, "utf8")).toBe(previous.disk);
+    await callback(web, await launch(web, link, scopes));
+    expect(web.onboarding.status("owner", link.transactionId)).toMatchObject({ phase: "review", grantedScopes: scopes });
+    expect(await readFile(statePath, "utf8")).toBe(previous.disk);
+    await expect(web.onboarding.confirm("other", link.transactionId, tenants)).rejects.toThrow();
+    await expect(web.onboarding.confirm("owner", link.transactionId, tenants.slice(0, 2))).rejects.toThrow();
+    expect((await web.onboarding.confirm("owner", link.transactionId, tenants)).phase).toBe("complete");
+    expect((await store.read()).scope).toBe(scopes.join(" "));
+    expect((await store.read()).refresh_token).toBe("invalid-fixture-refresh-1");
+    expect(JSON.stringify(web.onboarding.status("owner", link.transactionId))).not.toContain("refresh_token");
+    await expect(web.onboarding.begin("owner")).rejects.toThrow();
+  });
+
+  it("refuses an empty existing state, absent configured tenants, scope loss or unbound stored identity", async () => {
+    const web = await endpoint(tenants);
+    await expect(web.onboarding.begin("owner", { renewGrant: true })).rejects.toThrow();
+    const previous = await healthyGrant();
+    await expect((await endpoint()).onboarding.begin("owner", { renewGrant: true })).rejects.toThrow();
+    await expect((await endpoint(tenants, ["offline_access", "accounting.contacts"])).onboarding.begin("owner", { renewGrant: true })).rejects.toThrow();
+    await store.withLock(() => store.write({ ...previous.tokens, scope: undefined }));
+    await expect(web.onboarding.begin("owner", { renewGrant: true })).rejects.toThrow();
+    await store.withLock(() => store.write({ ...previous.tokens, access_token: "invalid-import-without-identity" }));
+    await expect(web.onboarding.begin("owner", { renewGrant: true })).rejects.toThrow();
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it.each(["denial", "exchange", "scope", "account", "tenants", "extra tenant", "expiry"])("preserves encrypted existing state after renewal %s failure", async failure => {
+    const previous = await healthyGrant();
+    const scopes = [...onboardingScopes, "accounting.contacts"]; grantedScopes = scopes; connectionOverride = connections;
+    const web = await endpoint(tenants, scopes);
+    const link = await web.onboarding.begin("owner", { renewGrant: true });
+    const first = await launch(web, link, scopes);
+    if (failure === "denial") {
+      await web.call(`/xero/callback?state=${first.authorization.searchParams.get("state")}&error=access_denied`, { headers: { Cookie: first.cookie } });
+    } else if (failure === "expiry") {
+      now += 900001;
+      await expect(web.onboarding.confirm("owner", link.transactionId, tenants)).rejects.toThrow();
+    } else {
+      if (failure === "exchange") request.mockResolvedValueOnce(new Response("invalid-secret", { status: 400 }));
+      if (failure === "scope") grantedScopes = [...scopes, "accounting.invoices"];
+      if (failure === "account") xeroSubject = "different-xero-user";
+      if (failure === "tenants") connectionOverride = connections.slice(0, 2);
+      if (failure === "extra tenant") connectionOverride = [...connections, { ...connections[0], tenantId: "44444444-1111-4111-8111-111111111111" }];
+      await callback(web, first);
+      await expect(web.onboarding.confirm("owner", link.transactionId, tenants)).rejects.toThrow();
+    }
+    expect(await readFile(statePath, "utf8")).toBe(previous.disk);
+    expect(await store.read()).toEqual(previous.tokens);
+  });
+
+  it("preserves existing state on persistence failure and rechecks connections at confirmation", async () => {
+    const previous = await healthyGrant(); const scopes = [...onboardingScopes, "accounting.contacts"];
+    grantedScopes = scopes; connectionOverride = connections;
+    const web = await endpoint(tenants, scopes); const link = await web.onboarding.begin("owner", { renewGrant: true });
+    await callback(web, await launch(web, link, scopes));
+    connectionOverride = connections.slice(0, 2);
+    await expect(web.onboarding.confirm("owner", link.transactionId, tenants)).rejects.toThrow();
+    expect(await readFile(statePath, "utf8")).toBe(previous.disk);
+    connectionOverride = connections;
+    await callback(web, await launch(web, web.onboarding.next("owner", link.transactionId), scopes));
+    expect(web.onboarding.status("owner", link.transactionId).phase).toBe("review");
+    const persist = vi.spyOn(store, "write").mockRejectedValueOnce(new Error("synthetic persistence failure"));
+    await expect(web.onboarding.confirm("owner", link.transactionId, tenants)).rejects.toThrow();
+    expect(await readFile(statePath, "utf8")).toBe(previous.disk);
+    expect(persist).toHaveBeenCalledOnce();
+    expect(web.onboarding.status("owner", link.transactionId)).toMatchObject({ phase: "failed", grantedScopes: undefined });
+  });
+
+  it.each(["account", "scope"])("refuses replacement after existing grant %s changes while consent is in progress", async change => {
+    const previous = await healthyGrant(); const scopes = [...onboardingScopes, "accounting.contacts"];
+    grantedScopes = scopes; connectionOverride = connections;
+    const web = await endpoint(tenants, scopes); const link = await web.onboarding.begin("owner", { renewGrant: true });
+    await callback(web, await launch(web, link, scopes));
+    const updated = change === "account" ? { ...previous.tokens, access_token: issuedToken("different-user") }
+      : { ...previous.tokens, scope: "offline_access" };
+    await store.withLock(() => store.write(updated)); const disk = await readFile(statePath, "utf8");
+    await expect(web.onboarding.confirm("owner", link.transactionId, tenants)).rejects.toThrow();
+    expect(await readFile(statePath, "utf8")).toBe(disk);
+  });
+
+  it("accepts normal refresh rotation of the same existing grant before confirmation", async () => {
+    const previous = await healthyGrant(); const scopes = [...onboardingScopes, "accounting.contacts"];
+    grantedScopes = scopes; connectionOverride = connections;
+    const web = await endpoint(tenants, scopes); const link = await web.onboarding.begin("owner", { renewGrant: true });
+    await callback(web, await launch(web, link, scopes));
+    await store.withLock(() => store.write({ ...previous.tokens, access_token: issuedToken(), refresh_token: "invalid-rotated-refresh",
+      scope: [...onboardingScopes].reverse().join(" ") }));
+    expect((await web.onboarding.confirm("owner", link.transactionId, tenants)).phase).toBe("complete");
+    expect((await store.read()).scope).toBe(scopes.join(" "));
   });
 });
 
@@ -269,6 +404,30 @@ describe("onboarding MCP authorization", () => {
       const saved = await owner.callTool({ name: "confirm-xero-connection", arguments: { transactionId: link.transactionId, tenantIds: selectedConnections.map(connection => connection.tenantId), confirmed: true } });
       expect(saved.structuredContent?.phase).toBe("complete");
       expect((await store.read()).refresh_token).toBe("invalid-fixture-refresh-6");
+    } finally { await owner.close(); }
+  });
+  it("renews through the existing owner-authorized MCP tools without caller-selected scopes", async () => {
+    const previous = await healthyGrant(); const scopes = [...onboardingScopes, "accounting.contacts"];
+    grantedScopes = scopes; connectionOverride = connections;
+    const web = await endpoint(tenants, scopes); const owner = new Client({ name: "owner", version: "1" });
+    try {
+      await owner.connect(new StreamableHTTPClientTransport(new URL(`${web.base}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${await jwt()}` } } }));
+      const tools = (await owner.listTools()).tools;
+      const begin = tools.find(tool => tool.name === "begin-xero-connection")!;
+      expect(begin.inputSchema.properties).toHaveProperty("renewGrant");
+      expect(begin.inputSchema.properties).not.toHaveProperty("scopes");
+      expect((await owner.callTool({ name: begin.name, arguments: {} })).isError).toBe(true);
+      const result = await owner.callTool({ name: begin.name, arguments: { renewGrant: true } });
+      expect(result.isError).not.toBe(true); expect(result.structuredContent?.requestedScopes).toEqual(scopes);
+      expect(request).not.toHaveBeenCalled(); expect(await readFile(statePath, "utf8")).toBe(previous.disk);
+      const link = result.structuredContent as { transactionId: string; startUrl: string };
+      await callback(web, await launch(web, link, scopes));
+      const review = await owner.callTool({ name: "get-xero-connection-status", arguments: { transactionId: link.transactionId } });
+      expect(review.structuredContent).toMatchObject({ phase: "review", grantedScopes: scopes, connections });
+      expect(await readFile(statePath, "utf8")).toBe(previous.disk);
+      const saved = await owner.callTool({ name: "confirm-xero-connection", arguments: { transactionId: link.transactionId, tenantIds: tenants, confirmed: true } });
+      expect(saved.isError).not.toBe(true); expect(saved.structuredContent?.phase).toBe("complete");
+      expect((await store.read()).scope).toBe(scopes.join(" "));
     } finally { await owner.close(); }
   });
   it("permits an empty read mapping only with explicit owner onboarding configuration", () => {
