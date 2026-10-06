@@ -69,14 +69,15 @@ it does not establish every currency/transaction variant or excluded change.
 - Choose the grant boundary explicitly. **Shared** uses the existing app/grant and
   adds bank-transaction write consent. Xero [scopes are additive](https://developer.xero.com/documentation/guides/oauth2/scopes),
   and the [latest token accesses all connected tenants](https://developer.xero.com/documentation/guides/oauth2/auth-flow):
-  this broadens the grant's capability across its connections, while server coding
-  remains restricted to the sole configured tenant. **Separate** retains the read
+  this broadens the grant's capability across its connections, while the shared
+  company policy denies every MCP mutation for read-only companies. **Separate** retains the read
   grant and uses a distinct approved PKCE app/grant connected only to the coding
   organisation; this keeps other organisations read-only at the OAuth boundary as
   well. It needs separate encrypted state, not a new runtime approval workflow.
 - After separately authorized merge/image publication, pin the successful image
   digest in the existing GitOps deployment. Enable `XERO_RECODING_ENABLED=true`,
-  set `XERO_RECODING_TENANT_IDS` to the sole coding tenant, set
+  set `XERO_TENANT_ACCESS_JSON` with only the approved company as `read-write`
+  and every other readable company as `read-only`, set
   `MCP_RECODE_SUBJECTS_JSON` / `MCP_RECODE_CLIENT_ID` to the approved existing user
   and client, and set `MCP_RECODE_SCOPE=xero:code` plus the chosen
   `XERO_RECODING_GRANT_MODE`. Retain all existing read tenant mappings. Separate

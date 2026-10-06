@@ -77,6 +77,7 @@ const CreateItemTool = CreateXeroTool(
       ],
     };
   },
+  "write",
 );
 
 export default CreateItemTool; 

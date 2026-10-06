@@ -595,19 +595,32 @@ receipts. The agent/client records results and any before/after evidence it need
 Only a small in-flight set rejects overlapping local calls for the same transaction; it is
 released on completion and stores no approval or outcome state.
 
-`XERO_RECODING_ENABLED` defaults to `false`. Enabled HTTP configuration requires
-exactly one `XERO_RECODING_TENANT_IDS` entry, mapped read subjects in
-`MCP_RECODE_SUBJECTS_JSON`, `MCP_RECODE_CLIENT_ID`, and a separate action scope
-`MCP_RECODE_SCOPE` (default `xero:code`). Only matching verified user/client tokens
-with both read and coding scope see the mutation tool. Other connected tenants
-retain read-only access. Stdio never registers the coding tool.
+Company access is shared across the entire MCP. `XERO_ALLOWED_TENANT_IDS` and
+`MCP_SUBJECT_TENANTS_JSON` retain their read-access meaning. Set
+`XERO_TENANT_ACCESS_JSON` to a JSON object mapping allowed tenant UUIDs to
+`read-only` or `read-write`; omitted companies default to read-only. Unknown
+companies or invalid values fail startup. All SDK API clients check the actual
+HTTP method and final tenant header before sending a request. Every mutation
+requires both the shared company policy and verified request write permission;
+a readable company cannot become writable by changing tool arguments or headers.
+Existing create/update/delete tools also use the common write guard but remain
+unregistered. Owner-only OAuth onboarding manages read connectivity separately;
+it does not mutate company records or request write consent.
 
+`XERO_RECODING_ENABLED` defaults to `false`. Enabled HTTP configuration requires
+mapped read subjects in `MCP_RECODE_SUBJECTS_JSON`, `MCP_RECODE_CLIENT_ID`, and a
+separate action scope `MCP_RECODE_SCOPE` (default `xero:code`). Only matching
+verified user/client tokens with read and coding scopes and access to a shared
+read-write company see `code-bank-transaction`. Each call rechecks company access.
+There is no separate coding tenant policy. Stdio never registers the coding tool
+or establishes request write permission.
 Choose an explicit approved `XERO_RECODING_GRANT_MODE=shared` or `separate`.
 An [approved narrow live test](docs/bank-account-coding-validation.md) may establish
 field preservation and actual statement linkage; no Demo-first requirement or
 proof assertion is imposed at startup. Shared uses the existing grant; adding
 `accounting.banktransactions` broadens that grant across all connected tenants,
-while this server restricts coding to the sole configured tenant. Separate uses
+while the shared server company policy still denies all mutations for read-only
+companies. Separate uses
 an independently approved PKCE app/grant in `XERO_RECODING_TOKEN_FILE`,
 `XERO_RECODING_TOKEN_KEY_FILE`, `XERO_RECODING_CLIENT_ID`, with a distinct app ID,
 non-aliased token state (including symlinks/hard links), and only the coding tenant.

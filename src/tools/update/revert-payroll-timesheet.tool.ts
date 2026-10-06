@@ -37,6 +37,7 @@ const RevertPayrollTimesheetTool = CreateXeroTool(
       ],
     };
   },
+  "write",
 );
 
 export default RevertPayrollTimesheetTool;

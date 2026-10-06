@@ -93,6 +93,7 @@ const UpdateQuoteTool = CreateXeroTool(
       ],
     };
   },
+  "write",
 );
 
 export default UpdateQuoteTool; 

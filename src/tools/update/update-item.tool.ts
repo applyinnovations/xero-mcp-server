@@ -82,6 +82,7 @@ const UpdateItemTool = CreateXeroTool(
       ],
     };
   },
+  "write",
 );
 
 export default UpdateItemTool; 

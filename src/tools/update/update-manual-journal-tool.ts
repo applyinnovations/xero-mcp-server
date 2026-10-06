@@ -119,6 +119,7 @@ const UpdateManualJournalTool = CreateXeroTool(
       };
     }
   },
+  "write",
 );
 
 export default UpdateManualJournalTool;

@@ -46,6 +46,7 @@ const UpdatePayrollTimesheetLineTool = CreateXeroTool(
       ],
     };
   },
+  "write",
 );
 
 export default UpdatePayrollTimesheetLineTool;

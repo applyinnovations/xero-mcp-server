@@ -111,6 +111,7 @@ describe("remote MCP protocol", () => {
 
 it("exposes account coding only to the configured owner, client, action scope and tenant, with explicit activation", async () => {
   vi.stubEnv("XERO_ALLOWED_TENANT_IDS", `${tenantA},${tenantB}`);
+  vi.stubEnv("XERO_TENANT_ACCESS_JSON", JSON.stringify({ [tenantA]: "read-write" }));
   vi.stubEnv("XERO_CLIENT_BEARER_TOKEN", "synthetic-read-token");
   vi.spyOn(TenantXeroClient.prototype, "authenticate").mockResolvedValue(undefined);
   vi.spyOn(AccountingApi.prototype, "getBankTransaction").mockResolvedValue({ body: { bankTransactions: [transaction] }, response: {} } as Awaited<ReturnType<AccountingApi["getBankTransaction"]>>);
@@ -123,7 +124,7 @@ it("exposes account coding only to the configured owner, client, action scope an
     [true, { sub: "bob", azp: "approved-client", scope: "xero:read xero:code" }, false],
     [false, { azp: "approved-client", scope: "xero:read xero:code" }, false],
   ] as const) {
-    const endpoint = await listening({ ...config, recoding: { tenantId: tenantA, subjects: ["alice"], clientId: "approved-client", scope: "xero:code", enabled, grantMode: "shared" } });
+    const endpoint = await listening({ ...config, subjectTenants: new Map([["alice", [tenantA, tenantB]], ["bob", [tenantB]]]), recoding: { subjects: ["alice"], clientId: "approved-client", scope: "xero:code", enabled, grantMode: "shared" } });
     const client = new Client({ name: "coding-test", version: "1" });
     try {
       await client.connect(new StreamableHTTPClientTransport(endpoint.url, { requestInit: { headers: { Authorization: `Bearer ${await token(claims)}` } } }));
@@ -134,6 +135,7 @@ it("exposes account coding only to the configured owner, client, action scope an
         const args = { bankTransactionId: transaction.bankTransactionID, changes, idempotencyKey: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" };
         const denied = await client.callTool({ name: "code-bank-transaction", arguments: { tenantId: tenantB, ...args } });
         expect(denied.isError).toBe(true);
+        expect(denied.content).toEqual([{ type: "text", text: expect.stringContaining("read-only") }]);
         const receipt = await client.callTool({ name: "code-bank-transaction", arguments: { tenantId: tenantA, ...args } });
         expect(receipt.isError).toBe(true);
         expect(receipt.structuredContent).toMatchObject({ outcome: "not-applied", code: "grant" });
@@ -147,6 +149,7 @@ it("exposes account coding only to the configured owner, client, action scope an
 
 it("performs a direct coding call through signed-user request registration without approval state", async () => {
   vi.stubEnv("XERO_ALLOWED_TENANT_IDS", tenantA);
+  vi.stubEnv("XERO_TENANT_ACCESS_JSON", JSON.stringify({ [tenantA]: "read-write" }));
   vi.stubEnv("XERO_CLIENT_BEARER_TOKEN", "synthetic-read-token");
   let record = structuredClone(transaction);
   vi.spyOn(xeroClients, "configuredTokenProvider").mockReturnValue({ getTokenSet: async () => ({ scope: "accounting.banktransactions", access_token: "synthetic" }) });
@@ -157,7 +160,7 @@ it("performs a direct coding call through signed-user request registration witho
     record.lineItems = structuredClone(args[2].bankTransactions![0].lineItems);
     return { body: { bankTransactions: [record] }, response: {} } as Awaited<ReturnType<AccountingApi["updateBankTransaction"]>>;
   });
-  const endpoint = await listening({ ...config, recoding: { tenantId: tenantA, subjects: ["alice"], clientId: "approved-client", scope: "xero:code", enabled: true, grantMode: "shared" } });
+  const endpoint = await listening({ ...config, recoding: { subjects: ["alice"], clientId: "approved-client", scope: "xero:code", enabled: true, grantMode: "shared" } });
   const client = new Client({ name: "direct-coding-test", version: "1" });
   try {
     await client.connect(new StreamableHTTPClientTransport(endpoint.url, { requestInit: { headers: { Authorization: `Bearer ${await token({ azp: "approved-client", scope: "xero:read xero:code" })}` } } }));

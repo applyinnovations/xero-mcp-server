@@ -59,6 +59,7 @@ const CreateCreditNoteTool = CreateXeroTool(
       ],
     };
   },
+  "write",
 );
 
 export default CreateCreditNoteTool;

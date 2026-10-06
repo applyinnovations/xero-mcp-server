@@ -79,6 +79,7 @@ const CreateQuoteTool = CreateXeroTool(
       ],
     };
   },
+  "write",
 );
 
 export default CreateQuoteTool;

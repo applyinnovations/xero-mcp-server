@@ -51,6 +51,7 @@ This allows you to specify details such as the employee ID, payroll calendar ID,
       ],
     };
   },
+  "write",
 );
 
 export default CreatePayrollTimesheetTool;

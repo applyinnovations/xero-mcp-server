@@ -114,6 +114,7 @@ const UpdateInvoiceTool = CreateXeroTool(
       ],
     };
   },
+  "write",
 );
 
 export default UpdateInvoiceTool;

@@ -105,6 +105,7 @@ const UpdateContactTool = CreateXeroTool(
       };
     }
   },
+  "write",
 );
 
 export default UpdateContactTool;

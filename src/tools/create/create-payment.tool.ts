@@ -76,6 +76,7 @@ const CreatePaymentTool = CreateXeroTool(
       ],
     };
   },
+  "write",
 );
 
 export default CreatePaymentTool;

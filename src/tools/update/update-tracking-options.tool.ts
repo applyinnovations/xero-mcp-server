@@ -40,7 +40,8 @@ const UpdateTrackingOptionsTool = CreateXeroTool(
         },
       ]
     };
-  }
+  },
+  "write",
 );
 
 export default UpdateTrackingOptionsTool;

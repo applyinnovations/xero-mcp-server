@@ -90,6 +90,7 @@ const UpdateCreditNoteTool = CreateXeroTool(
       ],
     };
   },
+  "write",
 );
 
 export default UpdateCreditNoteTool; 

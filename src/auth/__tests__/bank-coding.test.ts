@@ -6,21 +6,25 @@ import * as clients from "../../clients/xero-client.js";
 import { BankCodingConfig, canCodeBankTransactions, createBankCodingClientFactory, loadBankCodingConfig } from "../bank-coding.js";
 import { DurableOAuthProvider } from "../oauth-provider.js";
 import { tenantId, others } from "../../handlers/__tests__/bank-coding-fixtures.js";
-const config: BankCodingConfig = { tenantId, subjects: ["owner"], clientId: "client", scope: "xero:code", enabled: true, grantMode: "shared" };
+const config: BankCodingConfig = { subjects: ["owner"], clientId: "client", scope: "xero:code", enabled: true, grantMode: "shared" };
 let directory: string;
-beforeEach(async () => { directory = await mkdtemp(join(tmpdir(), "coding-auth-")); });
+const write = (callback: () => Promise<clients.TenantXeroClient>) => clients.runWithTenantPermissions([tenantId, ...others], callback, [tenantId]);
+beforeEach(async () => {
+  vi.stubEnv("XERO_ALLOWED_TENANT_IDS", [tenantId, ...others].join(","));
+  vi.stubEnv("XERO_TENANT_ACCESS_JSON", JSON.stringify({ [tenantId]: "read-write", [others[0]]: "read-only", [others[1]]: "read-only" }));
+  directory = await mkdtemp(join(tmpdir(), "coding-auth-")); });
 afterEach(async () => { vi.restoreAllMocks(); vi.unstubAllEnvs(); await rm(directory, { recursive: true, force: true }); });
 
-it("keeps activation disabled by default and requires exact tenant, action policy and grant choice", () => {
+it("keeps activation disabled by default and requires shared company policy, action policy and grant choice", () => {
   vi.stubEnv("XERO_RECODING_ENABLED", "false"); expect(loadBankCodingConfig({}, "xero:read")).toBeUndefined();
-  vi.stubEnv("XERO_RECODING_ENABLED", "true"); vi.stubEnv("XERO_RECODING_TENANT_IDS", tenantId);
+  vi.stubEnv("XERO_RECODING_ENABLED", "true");
   vi.stubEnv("MCP_RECODE_SUBJECTS_JSON", '["owner"]'); vi.stubEnv("MCP_RECODE_CLIENT_ID", "client"); vi.stubEnv("XERO_RECODING_GRANT_MODE", "shared");
   expect(loadBankCodingConfig({ owner: [tenantId] }, "xero:read")).toEqual(config);
   vi.stubEnv("XERO_RECODING_GRANT_MODE", ""); expect(() => loadBankCodingConfig({ owner: [tenantId] }, "xero:read")).toThrow();
   vi.stubEnv("XERO_RECODING_GRANT_MODE", "shared");
   expect(() => loadBankCodingConfig({ owner: others }, "xero:read")).toThrow("read permission");
   vi.stubEnv("MCP_RECODE_SCOPE", "xero:read"); expect(() => loadBankCodingConfig({ owner: [tenantId] }, "xero:read")).toThrow("separate action");
-  vi.stubEnv("MCP_RECODE_SCOPE", "xero:code"); vi.stubEnv("XERO_RECODING_TENANT_IDS", [tenantId, ...others].join(","));
+  vi.stubEnv("MCP_RECODE_SCOPE", "xero:code"); vi.stubEnv("XERO_TENANT_ACCESS_JSON", "{}");
   expect(() => loadBankCodingConfig({ owner: [tenantId, ...others] }, "xero:read")).toThrow();
 });
 
@@ -37,10 +41,10 @@ it("checks shared grant tenant and actual Xero consent scope before providing a 
   vi.spyOn(clients, "configuredTokenProvider").mockReturnValue({ getTokenSet: tokens });
   const authenticate = vi.spyOn(clients.TenantXeroClient.prototype, "authenticate").mockResolvedValue(undefined);
   const factory = createBankCodingClientFactory(config);
-  for (const id of others) await expect(factory(id)).rejects.toThrow("not allowed");
+  for (const id of others) await expect(write(() => factory(id))).rejects.toThrow("read-only");
   expect(tokens).not.toHaveBeenCalled();
-  await expect(factory(tenantId)).rejects.toThrow("consent"); expect(authenticate).not.toHaveBeenCalled();
-  scope = "accounting.banktransactions"; expect((await factory(tenantId)).tenantId).toBe(tenantId);
+  await expect(write(() => factory(tenantId))).rejects.toThrow("consent"); expect(authenticate).not.toHaveBeenCalled();
+  scope = "accounting.banktransactions"; expect((await write(() => factory(tenantId))).tenantId).toBe(tenantId);
 });
 
 it.each(["only-coding", "other-tenant", "multiple-tenants", "alias"])("requires isolated separate grant: %s", async variant => {
@@ -54,7 +58,7 @@ it.each(["only-coding", "other-tenant", "multiple-tenants", "alias"])("requires 
     Object.defineProperty(this, "tenants", { value: variant === "other-tenant" ? [{ tenantId: others[0] }] : variant === "multiple-tenants" ? [{ tenantId }, { tenantId: others[0] }] : [{ tenantId }] });
   });
   const factory = createBankCodingClientFactory({ ...config, grantMode: "separate" });
-  if (variant === "only-coding") expect((await factory(tenantId)).tenantId).toBe(tenantId);
-  else await expect(factory(tenantId)).rejects.toThrow();
+  if (variant === "only-coding") expect((await write(() => factory(tenantId))).tenantId).toBe(tenantId);
+  else await expect(write(() => factory(tenantId))).rejects.toThrow();
   if (variant === "alias") expect(tokens).not.toHaveBeenCalled();
 });

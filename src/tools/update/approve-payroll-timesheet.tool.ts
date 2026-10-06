@@ -37,6 +37,7 @@ const ApprovePayrollTimesheetTool = CreateXeroTool(
       ],
     };
   },
+  "write",
 );
 
 export default ApprovePayrollTimesheetTool;

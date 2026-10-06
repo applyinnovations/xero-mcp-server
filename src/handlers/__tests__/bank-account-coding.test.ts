@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { AccountingApi, BankTransaction } from "xero-node";
-import { runWithXeroClient, TenantXeroClient } from "../../clients/xero-client.js";
+import { runWithTenantPermissions, runWithXeroClient, TenantXeroClient } from "../../clients/xero-client.js";
 import { codeXeroBankTransaction } from "../code-xero-bank-transaction.handler.js";
 import { BankCodingClientFactory } from "../../auth/bank-coding.js";
 import { codeBankTransaction } from "../../helpers/bank-account-coding.js";
@@ -11,7 +11,7 @@ let record: BankTransaction;
 let chart = accounts;
 const client = () => new TenantXeroClient(tenantId, { getTokenSet: async () => ({ access_token: "synthetic" }) });
 const writer: BankCodingClientFactory = async () => client();
-const invoke = (args = changes, expected?: string, factory = writer) => runWithXeroClient(client(), () => codeXeroBankTransaction(transaction.bankTransactionID!, args, idempotencyKey, factory, expected));
+const invoke = (args = changes, expected?: string, factory = writer) => runWithTenantPermissions([tenantId], () => runWithXeroClient(client(), () => codeXeroBankTransaction(transaction.bankTransactionID!, args, idempotencyKey, factory, expected)), [tenantId]);
 const post = () => vi.spyOn(AccountingApi.prototype, "updateBankTransaction");
 const successfulPost = () => post().mockImplementation(async (...args) => {
   record.lineItems = structuredClone(args[2].bankTransactions![0].lineItems);
@@ -19,12 +19,14 @@ const successfulPost = () => post().mockImplementation(async (...args) => {
   return { body: { bankTransactions: [structuredClone(record)] }, response: {} } as Awaited<ReturnType<AccountingApi["updateBankTransaction"]>>;
 });
 beforeEach(() => {
+  vi.stubEnv("XERO_ALLOWED_TENANT_IDS", tenantId);
+  vi.stubEnv("XERO_TENANT_ACCESS_JSON", JSON.stringify({ [tenantId]: "read-write" }));
   record = structuredClone(transaction); chart = structuredClone(accounts);
   vi.spyOn(TenantXeroClient.prototype, "authenticate").mockResolvedValue(undefined);
   vi.spyOn(AccountingApi.prototype, "getBankTransaction").mockImplementation(async () => ({ body: { bankTransactions: [structuredClone(record)] }, response: {} }) as Awaited<ReturnType<AccountingApi["getBankTransaction"]>>);
   vi.spyOn(AccountingApi.prototype, "getAccounts").mockImplementation(async () => ({ body: { accounts: structuredClone(chart) }, response: {} }) as Awaited<ReturnType<AccountingApi["getAccounts"]>>);
 });
-afterEach(() => { vi.restoreAllMocks(); });
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 
 it.each([[true, "SPEND"], [false, "SPEND"], [true, "RECEIVE"], [false, "RECEIVE"]] as const)("codes existing %s/%s records preserving every unrelated field", async (reconciled, type) => {
   record.isReconciled = reconciled; record.type = type as BankTransaction.TypeEnum;

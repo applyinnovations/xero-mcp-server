@@ -32,7 +32,8 @@ const CreateTrackingCategoryTool = CreateXeroTool(
         },
       ]
     };
-  }
+  },
+  "write",
 );
 
 export default CreateTrackingCategoryTool;

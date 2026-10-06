@@ -63,7 +63,8 @@ const CreateBankTransactionTool = CreateXeroTool(
         },
       ],
     };
-  }
+  },
+  "write",
 );
 
 export default CreateBankTransactionTool;

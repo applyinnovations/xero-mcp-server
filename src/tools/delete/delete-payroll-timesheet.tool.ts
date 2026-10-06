@@ -35,6 +35,7 @@ const DeletePayrollTimesheetTool = CreateXeroTool(
       ],
     };
   },
+  "write",
 );
 
 export default DeletePayrollTimesheetTool;

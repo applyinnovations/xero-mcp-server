@@ -34,7 +34,8 @@ const CreateTrackingOptionsTool = CreateXeroTool(
         },
       ]
     };
-  }
+  },
+  "write",
 );
 
 export default CreateTrackingOptionsTool;

@@ -1,5 +1,5 @@
 import { BankTransaction } from "xero-node";
-import { xeroClient } from "../clients/xero-client.js";
+import { assertTenantWriteAccess, xeroClient } from "../clients/xero-client.js";
 import { BankCodingClientFactory } from "../auth/bank-coding.js";
 import { bankCodingMatches, bankCodingPayload, BankCodingChanges, codeBankTransaction } from "../helpers/bank-account-coding.js";
 import { getClientHeaders } from "../helpers/get-client-headers.js";
@@ -24,6 +24,7 @@ export async function codeXeroBankTransaction(bankTransactionId: string, changes
   inFlight.add(key);
   let submitted = false, code = "grant";
   try {
+    assertTenantWriteAccess(tenantId);
     const writer = await createWriter(tenantId);
     code = "read";
     await xeroClient.authenticate();

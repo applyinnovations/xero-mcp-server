@@ -61,6 +61,7 @@ const CreateContactTool = CreateXeroTool(
       };
     }
   },
+  "write",
 );
 
 export default CreateContactTool;

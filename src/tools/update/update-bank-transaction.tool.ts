@@ -73,7 +73,8 @@ const UpdateBankTransactionTool = CreateXeroTool(
         },
       ],
     };
-  }
+  },
+  "write",
 );
 
 export default UpdateBankTransactionTool;

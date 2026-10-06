@@ -85,6 +85,7 @@ const CreateInvoiceTool = CreateXeroTool(
       ],
     };
   },
+  "write",
 );
 
 export default CreateInvoiceTool;

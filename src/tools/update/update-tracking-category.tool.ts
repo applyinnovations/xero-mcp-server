@@ -34,7 +34,8 @@ const UpdateTrackingCategoryTool = CreateXeroTool(
         },
       ]
     };
-  }
+  },
+  "write",
 );
 
 export default UpdateTrackingCategoryTool;

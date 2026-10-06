@@ -145,6 +145,7 @@ const CreateManualJournalTool = CreateXeroTool(
       };
     }
   },
+  "write",
 );
 
 export default CreateManualJournalTool;

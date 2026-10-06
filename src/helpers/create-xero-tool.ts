@@ -2,7 +2,7 @@ import { ToolCallback } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ToolDefinition } from "../types/tool-definition.js";
 import { ZodRawShapeCompat } from "@modelcontextprotocol/sdk/server/zod-compat.js";
 import { z } from "zod";
-import { createTenantClient, runWithXeroClient } from "../clients/xero-client.js";
+import { assertTenantWriteAccess, createTenantClient, runWithXeroClient } from "../clients/xero-client.js";
 import { formatError } from "./format-error.js";
 
 export const CreateXeroTool =
@@ -11,6 +11,7 @@ export const CreateXeroTool =
     description: string,
     schema: Args,
     handler: ToolCallback<Args>,
+    access: "read" | "write" = "read",
   ): (() => ToolDefinition<ZodRawShapeCompat>) =>
   () => ({
     name: name,
@@ -19,6 +20,7 @@ export const CreateXeroTool =
     handler: async (args, extra) => {
       try {
         const tenantId = z.string().uuid().parse(args.tenantId);
+        if (access === "write") assertTenantWriteAccess(tenantId);
         const client = createTenantClient(tenantId);
         const invoke = handler as ToolCallback<ZodRawShapeCompat>;
         return await runWithXeroClient(client, () => invoke(args, extra));
