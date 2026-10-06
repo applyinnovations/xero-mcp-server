@@ -288,7 +288,8 @@ reads SPEND/RECEIVE only, defaults to reconciled transactions, and supports
 page. Concurrent changes can affect pagination, so it is not a snapshot export.
 `get-bank-transaction` retrieves one full SPEND/RECEIVE record by ID.
 
-Write tools are disabled by default. See [Account coding tool](#account-coding-tool)
+Writes require global company permission and verified action authorization.
+See [Account coding tool](#account-coding-tool)
 for permissions, configuration and reconciliation-verification requirements.
 
 ## Durable OAuth refresh
@@ -524,8 +525,8 @@ protected. Back up the current encrypted state and key separately.
 
 Tests use synthetic keys/tokens and mocked Xero endpoints. Real app consent,
 browser/hosted-client behavior, issued-token/scopes, all organisations and durable
-refresh/restart require live acceptance checks. Account coding is disabled by
-default and requires the action/OAuth permissions described below.
+refresh/restart require live acceptance checks. Account coding requires the
+global company and action/OAuth permissions described below.
 
 ### xlab CI
 
@@ -604,12 +605,16 @@ company mutations require the shared write guard regardless of tool name.
 Existing create/update/delete tools remain unregistered. Owner-only OAuth onboarding manages read connectivity separately;
 it does not mutate company records or request write consent.
 
-`XERO_RECODING_ENABLED` defaults to `false`. Enabled HTTP configuration requires
-mapped read subjects in `MCP_RECODE_SUBJECTS_JSON`, `MCP_RECODE_CLIENT_ID`, and a
+HTTP write authorization requires mapped read subjects in
+`MCP_RECODE_SUBJECTS_JSON`, `MCP_RECODE_CLIENT_ID`, and a
 separate action scope `MCP_RECODE_SCOPE` (default `xero:code`). Only matching
 verified user/client tokens with read and coding scopes and access to a shared
 read-write company see `code-bank-transaction`. Each call rechecks company access.
-There is no separate coding tenant policy. Stdio never registers the coding tool
+There is no operation-specific feature switch or separate coding tenant policy.
+Without action authorization, HTTP grants no request write permission. Partial
+authorization configuration fails startup. All companies may remain read-only
+with action authorization configured; the global policy denies their mutations.
+Stdio never registers the coding tool
 or establishes request write permission.
 
 Choose an explicit approved `XERO_RECODING_GRANT_MODE=shared` or `separate`.

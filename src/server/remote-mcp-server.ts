@@ -29,12 +29,12 @@ async function requestBody(request: IncomingMessage): Promise<unknown> {
 
 export function createRemoteServer(config: RemoteConfig, key?: JWTVerifyGetKey, onboarding: XeroOnboarding | undefined = configuredOnboarding(config)) {
   const verify = createAccessContextVerifier(config, key);
-  const createCodingClient = config.recoding?.enabled ? createBankCodingClientFactory(config.recoding) : undefined;
+  const createCodingClient = config.recoding ? createBankCodingClientFactory(config.recoding) : undefined;
   const resource = new URL(config.resource);
   const metadataPath = `/.well-known/oauth-protected-resource${resource.pathname}`;
   const metadataUrl = new URL(metadataPath, resource.origin).href;
   const hosts = new Set([resource.hostname, "127.0.0.1", "localhost"]);
-  const scopes = [config.readScope, ...(config.recoding?.enabled ? [config.recoding.scope] : []), ...(onboarding && config.connectScope ? [config.connectScope] : [])];
+  const scopes = [config.readScope, ...(config.recoding ? [config.recoding.scope] : []), ...(onboarding && config.connectScope ? [config.connectScope] : [])];
   const challenge = `Bearer resource_metadata="${metadataUrl}", scope="${scopes.join(" ")}"`;
   const server = createServer((request, response) => {
     void (async () => {

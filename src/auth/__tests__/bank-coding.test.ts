@@ -6,7 +6,7 @@ import * as clients from "../../clients/xero-client.js";
 import { BankCodingConfig, canCodeBankTransactions, createBankCodingClientFactory, loadBankCodingConfig } from "../bank-coding.js";
 import { DurableOAuthProvider } from "../oauth-provider.js";
 import { tenantId, others } from "../../handlers/__tests__/bank-coding-fixtures.js";
-const config: BankCodingConfig = { subjects: ["owner"], clientId: "client", scope: "xero:code", enabled: true, grantMode: "shared" };
+const config: BankCodingConfig = { subjects: ["owner"], clientId: "client", scope: "xero:code", grantMode: "shared" };
 let directory: string;
 const write = (callback: () => Promise<clients.TenantXeroClient>) => clients.runWithTenantPermissions([tenantId, ...others], callback, [tenantId]);
 beforeEach(async () => {
@@ -15,24 +15,27 @@ beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), "coding-auth-")); });
 afterEach(async () => { vi.restoreAllMocks(); vi.unstubAllEnvs(); await rm(directory, { recursive: true, force: true }); });
 
-it("keeps activation disabled by default and requires shared company policy, action policy and grant choice", () => {
-  vi.stubEnv("XERO_RECODING_ENABLED", "false"); expect(loadBankCodingConfig({}, "xero:read")).toBeUndefined();
-  vi.stubEnv("XERO_RECODING_ENABLED", "true");
+it("requires complete action authorization and grant choice, independently of company write policy", () => {
+  expect(loadBankCodingConfig({}, "xero:read")).toBeUndefined();
+  vi.stubEnv("MCP_RECODE_CLIENT_ID", "client");
+  expect(() => loadBankCodingConfig({}, "xero:read")).toThrow();
   vi.stubEnv("MCP_RECODE_SUBJECTS_JSON", '["owner"]'); vi.stubEnv("MCP_RECODE_CLIENT_ID", "client"); vi.stubEnv("XERO_RECODING_GRANT_MODE", "shared");
   expect(loadBankCodingConfig({ owner: [tenantId] }, "xero:read")).toEqual(config);
   vi.stubEnv("XERO_RECODING_GRANT_MODE", ""); expect(() => loadBankCodingConfig({ owner: [tenantId] }, "xero:read")).toThrow();
   vi.stubEnv("XERO_RECODING_GRANT_MODE", "shared");
-  expect(() => loadBankCodingConfig({ owner: others }, "xero:read")).toThrow("read permission");
+  expect(() => loadBankCodingConfig({}, "xero:read")).toThrow("read permission");
+  expect(loadBankCodingConfig({ owner: others }, "xero:read")).toEqual(config);
   vi.stubEnv("MCP_RECODE_SCOPE", "xero:read"); expect(() => loadBankCodingConfig({ owner: [tenantId] }, "xero:read")).toThrow("separate action");
   vi.stubEnv("MCP_RECODE_SCOPE", "xero:code"); vi.stubEnv("XERO_TENANT_ACCESS_JSON", "{}");
-  expect(() => loadBankCodingConfig({ owner: [tenantId, ...others] }, "xero:read")).toThrow();
+  expect(loadBankCodingConfig({ owner: [tenantId, ...others] }, "xero:read")).toEqual(config);
 });
 
 it("requires read access and action scope for the exact configured user, client and tenant", () => {
   const access = { subject: "owner", clientId: "client", tenantIds: [tenantId], scopes: ["xero:read", "xero:code"] };
   expect(canCodeBankTransactions(config, access, "xero:read")).toBe(true);
   for (const override of [{ subject: "other" }, { clientId: "other" }, { tenantIds: others }, { scopes: ["xero:read"] }, { scopes: ["xero:code"] }]) expect(canCodeBankTransactions(config, { ...access, ...override }, "xero:read")).toBe(false);
-  expect(canCodeBankTransactions({ ...config, enabled: false }, access, "xero:read")).toBe(false);
+  vi.stubEnv("XERO_TENANT_ACCESS_JSON", "{}");
+  expect(canCodeBankTransactions(config, access, "xero:read")).toBe(false);
 });
 
 it("checks shared grant tenant and actual Xero consent scope before providing a writer", async () => {
