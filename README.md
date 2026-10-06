@@ -602,16 +602,53 @@ Call `code-bank-transaction` directly after the agent/client's approval process.
 checks from ordinary reads. No full transaction package is passed as input. The
 handler fetches current state and chart internally, validates the selected lines
 and active non-bank targets, and changes only account code and its associated GL
-account ID. Descriptions/references, transaction/line IDs, untouched lines,
-tracking, explicit tax coding/amounts, quantities/amounts, currency/rate and totals
-are preserved and checked through a GET after one targeted POST with `unitdp=4`.
+account ID. If Xero accepts the targeted POST with `unitdp=4`, a subsequent GET
+checks descriptions/references, transaction/line IDs, untouched lines, tracking,
+explicit tax coding/amounts, quantities/amounts, currency/rate and totals against
+the expected result. A successful check verifies these returned fields, not the
+actual bank statement linkage or general API editability.
 Computed totals, currency/rate read fields and `IsReconciled` are omitted from POST.
 
-Existing authorised SPEND/RECEIVE entries may be reconciled or unreconciled;
-`list-bank-transactions` with `reconciledOnly: false` includes both states. Raw
+`list-bank-transactions` with `reconciledOnly: false` reads both reconciled and
+unreconciled authorised SPEND/RECEIVE entries. Read visibility does not establish
+that Xero permits account-code updates. Raw
 bank-feed statement lines, GST/tax edits, line creation/deletion, payments,
 transfers and lodgements are excluded from account coding. The original CRUD
 tools remain separate operations, governed by the same shared company permissions.
+
+### Provider edit restrictions and the native recoding path
+
+[Xero's BankTransactions contract](https://developer.xero.com/documentation/api/accounting/banktransactions)
+allows conversion apps to set `IsReconciled` when no matching bank statement line
+exists. A manually set flag and an actual statement match are different states;
+the flag alone proves neither editability nor a real statement link. Preservation
+tests that simulate an accepted POST do not prove live Xero acceptance.
+
+Xero can reject an account-code update with HTTP 400 and the validation message
+`This Bank Transaction cannot be edited as it has been reconciled with a Bank Statement.`
+Stop on that rejection. It establishes a provider restriction for the rejected
+request; it does not establish that every transaction with `IsReconciled: true`,
+or every SPEND/RECEIVE record, has the same restriction. The reviewed public
+[Accounting OpenAPI 19.1.0 contract](https://github.com/XeroAPI/Xero-OpenAPI/blob/fd9d44b04bf4934a7509b8e7ece51a9e0e462e4f/xero_accounting.yaml)
+and installed `xero-node` 13.3.0 expose a general BankTransactions update, with no documented
+account-only recoding endpoint or statement-match override. Neither another CRUD
+tool nor changing payload flags is an established bypass. Do not toggle
+`IsReconciled`, remove the statement match, delete/recreate the transaction or
+create a journal/new transaction to bypass the rejection.
+
+The documented alternative is Xero's native UI, subject to the user's role and
+transaction restrictions. [Find and Recode](https://central.xero.com/0/article/About-Find-Recode)
+supports spend/receive records in reconciled, unreconciled and manually marked
+states. Select the source-transaction method to update original lines;
+[the workflow](https://central.xero.com/0/article/Find-Recode-a-group-of-transaction-lines)
+includes reviewing the selected changes before confirmation. Locked periods and
+tracked inventory can prevent recoding. Xero also documents
+[direct transaction editing](https://central.xero.com/0/article/Edit-a-spend-or-receive-money-transaction-US-GL)
+for reconciled records with unchanged totals. These are UI capabilities, not an
+API guarantee. Availability for a particular record and preservation of its exact
+transaction/line IDs and actual statement linkage still require verification.
+The MCP can read and help review proposals; automated lossless recoding of
+statement-matched transactions through the public API remains unproven.
 
 The compact result includes IDs, caller's idempotency key, actor, completion time,
 selected account-code differences and outcome (`updated`, `unchanged`,
