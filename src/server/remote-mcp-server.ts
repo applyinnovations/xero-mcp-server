@@ -6,7 +6,6 @@ import { runWithTenantPermissions, configuredTenantIds, configuredWritableTenant
 import { XeroMcpServer } from "./xero-mcp-server.js";
 import { ToolFactory } from "../tools/tool-factory.js";
 import { configuredOnboarding, XeroOnboarding, XeroOnboardingError } from "../auth/xero-onboarding.js";
-import { registerOnboardingTools } from "../tools/onboarding.js";
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 
 function json(response: ServerResponse, status: number, body: unknown) {
@@ -78,8 +77,13 @@ export function createRemoteServer(config: RemoteConfig, key?: JWTVerifyGetKey, 
         catch { json(response, 400, { error: "Invalid or oversized JSON body" }); return; }
         await runWithTenantPermissions(permissions, async () => {
           const mcp = XeroMcpServer.GetServer();
-          if (reader) ToolFactory(mcp, writePermissions.length ? ["read", "write"] : ["read"]);
-          if (connector && onboarding) registerOnboardingTools(mcp, onboarding, context.subject);
+          ToolFactory(mcp, {
+            access: {
+              company: reader ? writePermissions.length ? ["read", "write"] : ["read"] : [],
+              connection: connector ? ["read", "write"] : [],
+            },
+            subject: context.subject, onboarding,
+          });
           const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
           let closed = false;
           const close = () => { if (!closed) { closed = true; void mcp.close().catch(() => {}); } };

@@ -603,8 +603,19 @@ Every tool definition requires explicit `access: "read"` or `access: "write"`
 metadata. Central registration rejects missing classifications and derives MCP
 read-only hints from that field. Read invocations discard request write authority;
 company mutations require the shared write guard regardless of tool name.
-Other generic create/update/delete tools remain unregistered. Owner-only OAuth onboarding manages read connectivity separately;
-it does not mutate company records or request write consent.
+`SupportedTools` in `src/tools/index.ts` is the single runtime catalog used by
+stdio and HTTP. Category exports contain only supported tools; coding belongs to
+`UpdateTools`. Other generic create/update/delete implementations remain outside
+that catalog. Every definition has a `company` or `connection` resource alongside
+read/write access. The shared company factory supplies company metadata and tenant
+guards; connection definitions use the same builder and registrar with their
+existing service and verified owner context.
+
+Connection status is read access; beginning/continuing consent and confirming
+grant persistence are connection writes. They require existing connector
+authorization and remain available before any grant or company mapping exists.
+Connection tools discard company write authority, so consent-state mutations
+cannot authorize accounting mutations. They do not request write consent.
 
 HTTP uses the existing issuer, audience, resource scope (`MCP_READ_SCOPE`) and
 subject-to-tenant mapping to authorize resource access. A verified client identity

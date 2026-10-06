@@ -1,31 +1,11 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-
-import { GetTools } from "./get/index.js";
-import { ListTools } from "./list/index.js";
-import { connectedTenants } from "../clients/xero-client.js";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { RegisterTool } from "../helpers/register-tool.js";
-import { formatError } from "../helpers/format-error.js";
-import CodeBankTransactionTool from "./update/code-bank-transaction.tool.js";
-import type { ToolAccess } from "../types/tool-definition.js";
+import type { ToolContext } from "../types/tool-definition.js";
+import { SupportedTools } from "./index.js";
 
-export function ToolFactory(server: McpServer, access: readonly ToolAccess[] = ["read"]) {
-
-  RegisterTool(server, {
-    name: "list-tenants",
-    description: "List connected organisations allowed by this server. Select a tenantId explicitly for all accounting reads.",
-    access: "read",
-    schema: {},
-    handler: async () => {
-      try {
-        const result = { tenants: await connectedTenants() };
-        return { structuredContent: result, content: [{ type: "text", text: JSON.stringify(result) }] };
-      } catch (error) {
-        return { isError: true, content: [{ type: "text", text: formatError(error) }] };
-      }
-    },
-  });
-  for (const createTool of [...GetTools, ...ListTools, CodeBankTransactionTool]) {
-    const tool = createTool();
-    if (access.includes(tool.access)) RegisterTool(server, tool);
+export function ToolFactory(server: McpServer, context: ToolContext = { access: { company: ["read"], connection: [] } }) {
+  for (const createTool of SupportedTools) {
+    const tool = createTool(context);
+    if (context.access[tool.resource].includes(tool.access)) RegisterTool(server, tool);
   }
 }
