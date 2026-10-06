@@ -3,11 +3,12 @@ import { listXeroAgedReceivablesByContact } from "../../handlers/list-aged-recei
 import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
 import { formatAgedReportFilter } from "../../helpers/format-aged-report-filter.js";
 
-const ListAgedReceivablesByContact = CreateXeroTool(
-  "list-aged-receivables-by-contact",
-  `Lists the aged receivables in Xero.
+const ListAgedReceivablesByContact = CreateXeroTool({
+  name: "list-aged-receivables-by-contact",
+  description: `Lists the aged receivables in Xero.
   This shows aged receivables for a certain contact up to a report date.`,
-  {
+  access: "read",
+  schema: {
     contactId: z.string(),
     reportDate: z.string().optional()
       .describe("Optional date to retrieve aged receivables in YYYY-MM-DD format. If none is provided, defaults to end of the current month."),
@@ -16,7 +17,7 @@ const ListAgedReceivablesByContact = CreateXeroTool(
     invoicesToDate: z.string().optional()
       .describe("Optional to date in YYYY-MM-DD format. If provided, will only show payable invoices before this date for the contact."),
   },
-  async ({ contactId, reportDate, invoicesFromDate, invoicesToDate }) => {
+  handler: async ({ contactId, reportDate, invoicesFromDate, invoicesToDate }) => {
     const response = await listXeroAgedReceivablesByContact(contactId, reportDate, invoicesFromDate, invoicesToDate);
     
     if (response.isError) {
@@ -53,7 +54,7 @@ const ListAgedReceivablesByContact = CreateXeroTool(
         }
       ],
     };
-  }
-);
+  },
+});
 
 export default ListAgedReceivablesByContact;

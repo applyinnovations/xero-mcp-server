@@ -3,15 +3,16 @@ import { listXeroManualJournals } from "../../handlers/list-xero-manual-journals
 import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
 import { z } from "zod";
 
-const ListManualJournalsTool = CreateXeroTool(
-  "list-manual-journals",
-  `List all manual journals from Xero.
+const ListManualJournalsTool = CreateXeroTool({
+  name: "list-manual-journals",
+  description: `List all manual journals from Xero.
 Ask the user if they want to see a specific manual journal or all manual journals before running.
 Can optionally pass in manual journal ID to retrieve a specific journal, or a date to filter journals modified after that date.
 The response presents a complete overview of all manual journals currently registered in your Xero account, with their details. 
 Ask the user if they want the next page of manual journals after running this tool if 10 manual journals are returned.
 If they want the next page, call this tool again with the next page number, modified date, and the manual journal ID if one was provided in the previous call.`,
-  {
+  access: "read",
+  schema: {
     manualJournalId: z
       .string()
       .optional()
@@ -25,7 +26,7 @@ If they want the next page, call this tool again with the next page number, modi
     page: z.number().optional().describe("Optional page number for pagination"),
     // TODO: where, order
   },
-  async (args) => {
+  handler: async (args) => {
     const response = await listXeroManualJournals(
       args?.page,
       args?.manualJournalId,
@@ -93,6 +94,6 @@ If they want the next page, call this tool again with the next page number, modi
       ],
     };
   },
-);
+});
 
 export default ListManualJournalsTool;

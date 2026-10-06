@@ -31,7 +31,7 @@ export class DurableOAuthProvider implements XeroTokenProvider {
           await this.options.store.write(current);
         }
         // Accounting clients need only the access token, not refresh credentials.
-        return { access_token: current.access_token, expires_at: current.expires_at, token_type: "Bearer" };
+        return { access_token: current.access_token, expires_at: current.expires_at, token_type: "Bearer", scope: current.scope };
       });
     } catch {
       // Never expose response bodies, tokens, encryption errors or configured paths.

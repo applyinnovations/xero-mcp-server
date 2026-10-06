@@ -9,14 +9,15 @@ const trackingOptionSchema = z.object({
   status: z.enum(["ACTIVE", "ARCHIVED"]).optional()
 });
 
-const UpdateTrackingOptionsTool = CreateXeroTool(
-  "update-tracking-options",
-  `Updates tracking options for a tracking category in Xero.`,
-  {
+const UpdateTrackingOptionsTool = CreateXeroTool({
+  name: "update-tracking-options",
+  description: `Updates tracking options for a tracking category in Xero.`,
+  access: "write",
+  schema: {
     trackingCategoryId: z.string(),
     options: z.array(trackingOptionSchema).max(10)
   },
-  async ({ trackingCategoryId, options }) => {
+  handler: async ({ trackingCategoryId, options }) => {
     const response = await updateXeroTrackingOption(trackingCategoryId, options);
 
     if (response.isError) {
@@ -40,7 +41,7 @@ const UpdateTrackingOptionsTool = CreateXeroTool(
         },
       ]
     };
-  }
-);
+  },
+});
 
 export default UpdateTrackingOptionsTool;

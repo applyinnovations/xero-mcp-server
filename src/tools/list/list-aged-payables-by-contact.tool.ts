@@ -3,11 +3,12 @@ import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
 import { formatAgedReportFilter } from "../../helpers/format-aged-report-filter.js";
 import { listXeroAgedPayablesByContact } from "../../handlers/list-aged-payables-by-contact.handler.js";
 
-const ListAgedPayablesByContact = CreateXeroTool(
-  "list-aged-payables-by-contact",
-  `Lists the aged payables in Xero.
+const ListAgedPayablesByContact = CreateXeroTool({
+  name: "list-aged-payables-by-contact",
+  description: `Lists the aged payables in Xero.
   This shows aged payables for a certain contact up to a report date.`,
-  {
+  access: "read",
+  schema: {
     contactId: z.string(),
     reportDate: z.string().optional()
       .describe("Optional date to retrieve aged payables in YYYY-MM-DD format. If none is provided, defaults to end of the current month."),
@@ -16,7 +17,7 @@ const ListAgedPayablesByContact = CreateXeroTool(
     invoicesToDate: z.string().optional()
       .describe("Optional to date in YYYY-MM-DD format. If provided, will only show payable invoices before this date for the contact."),
   },
-  async ({ contactId, reportDate, invoicesFromDate, invoicesToDate }) => {
+  handler: async ({ contactId, reportDate, invoicesFromDate, invoicesToDate }) => {
     const response = await listXeroAgedPayablesByContact(contactId, reportDate, invoicesFromDate, invoicesToDate);
     
     if (response.isError) {
@@ -53,7 +54,7 @@ const ListAgedPayablesByContact = CreateXeroTool(
         }
       ],
     };
-  }
-);
+  },
+});
 
 export default ListAgedPayablesByContact;

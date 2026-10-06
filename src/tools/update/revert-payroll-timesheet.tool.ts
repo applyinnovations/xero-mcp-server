@@ -5,13 +5,14 @@ import {
 } from "../../handlers/revert-xero-payroll-timesheet.handler.js";
 import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
 
-const RevertPayrollTimesheetTool = CreateXeroTool(
-  "revert-timesheet",
-  `Revert a payroll timesheet to draft in Xero by its ID.`,
-  {
+const RevertPayrollTimesheetTool = CreateXeroTool({
+  name: "revert-timesheet",
+  description: `Revert a payroll timesheet to draft in Xero by its ID.`,
+  access: "write",
+  schema: {
     timesheetID: z.string().describe("The ID of the timesheet to revert."),
   },
-  async (params: { timesheetID: string }) => {
+  handler: async (params: { timesheetID: string }) => {
     const { timesheetID } = params;
     const response = await revertXeroPayrollTimesheet(timesheetID);
 
@@ -37,6 +38,6 @@ const RevertPayrollTimesheetTool = CreateXeroTool(
       ],
     };
   },
-);
+});
 
 export default RevertPayrollTimesheetTool;

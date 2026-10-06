@@ -2,11 +2,12 @@ import { listXeroOrganisationDetails } from "../../handlers/list-xero-organisati
 import { getExternalLink } from "../../helpers/get-external-link.js";
 import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
 
-const ListOrganisationDetailsTool = CreateXeroTool(
-  "list-organisation-details",
-  "Lists the organisation details from Xero. Use this tool to get information about the current Xero organisation.",
-  {},
-  async () => {
+const ListOrganisationDetailsTool = CreateXeroTool({
+  name: "list-organisation-details",
+  description: "Lists the organisation details from Xero. Use this tool to get information about the current Xero organisation.",
+  access: "read",
+  schema: {},
+  handler: async () => {
     const response = await listXeroOrganisationDetails();
     if (response.error !== null) {
       return {
@@ -102,6 +103,6 @@ const ListOrganisationDetailsTool = CreateXeroTool(
       ],
     };
   },
-);
+});
 
 export default ListOrganisationDetailsTool;

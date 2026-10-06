@@ -14,10 +14,11 @@ const salesDetailsSchema = z.object({
   accountCode: z.string().optional(),
 });
 
-const UpdateItemTool = CreateXeroTool(
-  "update-item",
-  "Update an item in Xero.",
-  {
+const UpdateItemTool = CreateXeroTool({
+  name: "update-item",
+  description: "Update an item in Xero.",
+  access: "write",
+  schema: {
     itemId: z.string(),
     code: z.string(),
     name: z.string(),
@@ -28,7 +29,7 @@ const UpdateItemTool = CreateXeroTool(
     isTrackedAsInventory: z.boolean().optional(),
     inventoryAssetAccountCode: z.string().optional(),
   },
-  async ({
+  handler: async ({
     itemId,
     code,
     name,
@@ -82,6 +83,6 @@ const UpdateItemTool = CreateXeroTool(
       ],
     };
   },
-);
+});
 
 export default UpdateItemTool; 

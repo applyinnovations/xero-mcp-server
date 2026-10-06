@@ -4,13 +4,14 @@ import { DeepLinkType, getDeepLink } from "../../helpers/get-deeplink.js";
 import { ensureError } from "../../helpers/ensure-error.js";
 import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
 
-const UpdateContactTool = CreateXeroTool(
-  "update-contact",
-  "Update a contact in Xero.\
+const UpdateContactTool = CreateXeroTool({
+  name: "update-contact",
+  description: "Update a contact in Xero.\
  When a contact is updated, a deep link to the contact in Xero is returned. \
  This deep link can be used to view the contact in Xero directly. \
  This link should be displayed to the user.",
-  {
+  access: "write",
+  schema: {
     contactId: z.string(),
     name: z.string(),
     firstName: z.string().optional(),
@@ -28,7 +29,7 @@ const UpdateContactTool = CreateXeroTool(
       })
       .optional(),
   },
-  async ({
+  handler: async ({
     contactId,
     name,
     firstName,
@@ -105,6 +106,6 @@ const UpdateContactTool = CreateXeroTool(
       };
     }
   },
-);
+});
 
 export default UpdateContactTool;

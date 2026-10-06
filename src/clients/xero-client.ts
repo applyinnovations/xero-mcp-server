@@ -12,6 +12,8 @@ export interface XeroTokenProvider {
   getTokenSet(): Promise<TokenSetParameters>;
 }
 
+interface SdkRequest { method?: string; headers?: Record<string, unknown> }
+
 export class TenantXeroClient extends XeroClient {
   private authentication?: Promise<void>;
   private shortCode?: string;
@@ -19,6 +21,21 @@ export class TenantXeroClient extends XeroClient {
   constructor(public readonly tenantId: string, private readonly provider: XeroTokenProvider) {
     super();
     z.string().uuid().parse(tenantId);
+    // The locked SDK calls default authentication after merging caller headers and
+    // applying OAuth. Guard the actual request, including indirect SDK routes.
+    for (const api of [this.accountingApi, this.assetApi, this.filesApi, this.projectApi,
+      this.payrollAUApi, this.bankFeedsApi, this.payrollUKApi, this.payrollNZApi,
+      this.appStoreApi, this.financeApi]) {
+      const authentication = (api as unknown as { authentications: { default: { applyToRequest(request: SdkRequest): void | Promise<void> } } }).authentications.default;
+      const apply = authentication.applyToRequest.bind(authentication);
+      authentication.applyToRequest = async request => {
+        await apply(request);
+        const headers = Object.entries(request.headers ?? {}).filter(([name]) => name.toLowerCase() === "xero-tenant-id");
+        if (headers.length !== 1 || headers[0][1] !== this.tenantId) throw new Error("Xero request tenant must match the selected tenant");
+        if (!effectiveTenantIds().includes(this.tenantId)) throw new Error("Selected tenant is not allowed");
+        if (!["GET", "HEAD", "OPTIONS"].includes((request.method ?? "").toUpperCase())) assertTenantWriteAccess(this.tenantId);
+      };
+    }
   }
 
   authenticate(): Promise<void> {
@@ -46,16 +63,37 @@ export class TenantXeroClient extends XeroClient {
 }
 
 const context = new AsyncLocalStorage<TenantXeroClient>();
-const permissions = new AsyncLocalStorage<readonly string[]>();
+const permissions = new AsyncLocalStorage<{ read: readonly string[]; write: readonly string[] }>();
 
-export function runWithTenantPermissions<T>(tenantIds: readonly string[], callback: () => T): T {
-  return permissions.run(tenantIds, callback);
+export function runWithTenantPermissions<T>(tenantIds: readonly string[], callback: () => T, writeTenantIds: readonly string[] = []): T {
+  return permissions.run({ read: tenantIds, write: writeTenantIds }, callback);
+}
+
+// Read tools cannot inherit a caller's mutation authority, including indirect SDK calls.
+export function runWithReadOnlyAccess<T>(callback: () => T): T {
+  const requested = permissions.getStore();
+  return requested ? permissions.run({ read: requested.read, write: [] }, callback) : callback();
+}
+
+// Omitted companies are read-only. This policy governs every SDK mutation,
+// independently of which tools are registered or what the OAuth grant permits.
+export function configuredWritableTenantIds(): string[] {
+  const allowed = configuredTenantIds();
+  const policy = z.record(z.string().uuid(), z.enum(["read-only", "read-write"]))
+    .parse(JSON.parse(process.env.XERO_TENANT_ACCESS_JSON ?? "{}"));
+  if (Object.keys(policy).some(id => !allowed.includes(id))) throw new Error("Company access policy must be a subset of allowed tenant IDs");
+  return allowed.filter(id => policy[id] === "read-write");
+}
+
+export function assertTenantWriteAccess(tenantId: string): void {
+  if (!effectiveTenantIds().includes(tenantId) || !configuredWritableTenantIds().includes(tenantId)) throw new Error("Selected company is read-only");
+  if (!permissions.getStore()?.write.includes(tenantId)) throw new Error("Xero mutation requires authorized request write permission");
 }
 
 function effectiveTenantIds(): string[] {
   const allowed = configuredTenantIds();
   const requested = permissions.getStore();
-  return requested ? allowed.filter((tenantId) => requested.includes(tenantId)) : allowed;
+  return requested ? allowed.filter((tenantId) => requested.read.includes(tenantId)) : allowed;
 }
 
 export function runWithXeroClient<T>(client: TenantXeroClient, callback: () => T): T {

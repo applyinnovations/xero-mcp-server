@@ -43,6 +43,7 @@ describe("durable OAuth", () => {
     expect(request).toHaveBeenCalledTimes(1);
     expect(results.every((result) => result.access_token === "invalid-new-access")).toBe(true);
     expect(results.every((result) => !("refresh_token" in result))).toBe(true);
+    expect(results.every((result) => result.scope === tokens.scope)).toBe(true);
     expect((await store.read()).refresh_token).toBe("invalid-new-refresh");
     const restarted = new DurableOAuthProvider(options(request, new EncryptedTokenStore(path, keyPath, "fixture-client")));
     await restarted.getTokenSet();

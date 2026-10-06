@@ -11,15 +11,16 @@ const lineItemSchema = z.object({
   taxType: z.string(),
 });
 
-const UpdateCreditNoteTool = CreateXeroTool(
-  "update-credit-note",
-  "Update a credit note in Xero. Only works on draft credit notes.\
+const UpdateCreditNoteTool = CreateXeroTool({
+  name: "update-credit-note",
+  description: "Update a credit note in Xero. Only works on draft credit notes.\
   All line items must be provided. Any line items not provided will be removed. Including existing line items.\
   Do not modify line items that have not been specified by the user.\
  When a credit note is updated, a deep link to the credit note in Xero is returned.\
  This deep link can be used to view the credit note in Xero directly.\
  This link should be displayed to the user.",
-  {
+  access: "write",
+  schema: {
     creditNoteId: z.string(),
     lineItems: z.array(lineItemSchema).optional().describe(
       "All line items must be provided. Any line items not provided will be removed. Including existing line items.\
@@ -29,7 +30,7 @@ const UpdateCreditNoteTool = CreateXeroTool(
     date: z.string().optional(),
     contactId: z.string().optional(),
   },
-  async (
+  handler: async (
     {
       creditNoteId,
       lineItems,
@@ -90,6 +91,6 @@ const UpdateCreditNoteTool = CreateXeroTool(
       ],
     };
   },
-);
+});
 
 export default UpdateCreditNoteTool; 

@@ -5,13 +5,14 @@ import {
 } from "../../handlers/delete-xero-payroll-timesheet.handler.js";
 import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
 
-const DeletePayrollTimesheetTool = CreateXeroTool(
-  "delete-timesheet",
-  `Delete an existing payroll timesheet in Xero by its ID.`,
-  {
+const DeletePayrollTimesheetTool = CreateXeroTool({
+  name: "delete-timesheet",
+  description: `Delete an existing payroll timesheet in Xero by its ID.`,
+  access: "write",
+  schema: {
     timesheetID: z.string().describe("The ID of the timesheet to delete."),
   },
-  async (params: { timesheetID: string }) => {
+  handler: async (params: { timesheetID: string }) => {
     const { timesheetID } = params;
     const response = await deleteXeroPayrollTimesheet(timesheetID);
 
@@ -35,6 +36,6 @@ const DeletePayrollTimesheetTool = CreateXeroTool(
       ],
     };
   },
-);
+});
 
 export default DeletePayrollTimesheetTool;

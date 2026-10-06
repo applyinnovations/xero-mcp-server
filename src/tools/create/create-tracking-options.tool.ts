@@ -3,14 +3,15 @@ import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
 import { formatTrackingOption } from "../../helpers/format-tracking-option.js";
 import { createXeroTrackingOptions } from "../../handlers/create-xero-tracking-option.handler.js";
 
-const CreateTrackingOptionsTool = CreateXeroTool(
-  "create-tracking-options",
-  `Create tracking options for a tracking category in Xero.`,
-  {
+const CreateTrackingOptionsTool = CreateXeroTool({
+  name: "create-tracking-options",
+  description: `Create tracking options for a tracking category in Xero.`,
+  access: "write",
+  schema: {
     trackingCategoryId: z.string(),
     optionNames: z.array(z.string()).max(10)
   },
-  async ({ trackingCategoryId, optionNames }) => {
+  handler: async ({ trackingCategoryId, optionNames }) => {
     const response = await createXeroTrackingOptions(trackingCategoryId, optionNames);
 
     if (response.isError) {
@@ -34,7 +35,7 @@ const CreateTrackingOptionsTool = CreateXeroTool(
         },
       ]
     };
-  }
-);
+  },
+});
 
 export default CreateTrackingOptionsTool;

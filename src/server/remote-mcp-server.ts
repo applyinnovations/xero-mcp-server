@@ -2,11 +2,14 @@ import { createServer, IncomingMessage, ServerResponse } from "node:http";
 import { JWTVerifyGetKey } from "jose";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { RemoteAuthError, RemoteConfig, createAccessContextVerifier, canConnectXero } from "../auth/remote-auth.js";
-import { runWithTenantPermissions, configuredTenantIds } from "../clients/xero-client.js";
+import { runWithTenantPermissions, configuredTenantIds, configuredWritableTenantIds } from "../clients/xero-client.js";
 import { XeroMcpServer } from "./xero-mcp-server.js";
 import { ToolFactory } from "../tools/tool-factory.js";
 import { configuredOnboarding, XeroOnboarding, XeroOnboardingError } from "../auth/xero-onboarding.js";
 import { registerOnboardingTools } from "../tools/onboarding.js";
+
+import { canCodeBankTransactions, createBankCodingClientFactory } from "../auth/bank-coding.js";
+import { registerBankCodingTool } from "../tools/update/code-bank-transaction.tool.js";
 
 function json(response: ServerResponse, status: number, body: unknown) {
   response.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store" });
@@ -26,11 +29,12 @@ async function requestBody(request: IncomingMessage): Promise<unknown> {
 
 export function createRemoteServer(config: RemoteConfig, key?: JWTVerifyGetKey, onboarding: XeroOnboarding | undefined = configuredOnboarding(config)) {
   const verify = createAccessContextVerifier(config, key);
+  const createCodingClient = config.recoding?.enabled ? createBankCodingClientFactory(config.recoding) : undefined;
   const resource = new URL(config.resource);
   const metadataPath = `/.well-known/oauth-protected-resource${resource.pathname}`;
   const metadataUrl = new URL(metadataPath, resource.origin).href;
   const hosts = new Set([resource.hostname, "127.0.0.1", "localhost"]);
-  const scopes = [config.readScope, ...(onboarding && config.connectScope ? [config.connectScope] : [])];
+  const scopes = [config.readScope, ...(config.recoding?.enabled ? [config.recoding.scope] : []), ...(onboarding && config.connectScope ? [config.connectScope] : [])];
   const challenge = `Bearer resource_metadata="${metadataUrl}", scope="${scopes.join(" ")}"`;
   const server = createServer((request, response) => {
     void (async () => {
@@ -66,6 +70,8 @@ export function createRemoteServer(config: RemoteConfig, key?: JWTVerifyGetKey, 
         const context = await verify(token);
         const permissions = context.tenantIds.filter(id => configuredTenantIds().includes(id));
         const reader = context.scopes.includes(config.readScope) && permissions.length > 0;
+        const writePermissions = reader && config.recoding && canCodeBankTransactions(config.recoding, context, config.readScope)
+          ? permissions.filter(id => configuredWritableTenantIds().includes(id)) : [];
         const connector = !!onboarding && canConnectXero(config, context);
         if (!reader && !connector) throw new RemoteAuthError(403);
         if (request.method !== "POST") { response.setHeader("Allow", "POST, OPTIONS"); json(response, 405, { error: "Stateless MCP accepts POST only" }); return; }
@@ -76,6 +82,9 @@ export function createRemoteServer(config: RemoteConfig, key?: JWTVerifyGetKey, 
         await runWithTenantPermissions(permissions, async () => {
           const mcp = XeroMcpServer.GetServer();
           if (reader) ToolFactory(mcp);
+          if (writePermissions.length && createCodingClient) {
+            registerBankCodingTool(mcp, createCodingClient, context.subject);
+          }
           if (connector && onboarding) registerOnboardingTools(mcp, onboarding, context.subject);
           const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
           let closed = false;
@@ -84,7 +93,7 @@ export function createRemoteServer(config: RemoteConfig, key?: JWTVerifyGetKey, 
           response.once("close", close);
           await mcp.connect(transport);
           await transport.handleRequest(request, response, body);
-        });
+        }, writePermissions);
       } catch (error) {
         if (response.headersSent) { response.destroy(); return; }
         if (error instanceof RemoteAuthError) {

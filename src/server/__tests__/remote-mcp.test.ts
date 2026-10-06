@@ -6,7 +6,9 @@ import { AccountingApi, BankTransaction } from "xero-node";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { createAccessVerifier, loadRemoteConfig, RemoteAuthError, RemoteConfig } from "../../auth/remote-auth.js";
+import * as xeroClients from "../../clients/xero-client.js";
 import { TenantXeroClient } from "../../clients/xero-client.js";
+import { transaction, accounts, changes } from "../../handlers/__tests__/bank-coding-fixtures.js";
 import { createRemoteServer } from "../remote-mcp-server.js";
 
 const tenantA = "11111111-1111-4111-8111-111111111111";
@@ -23,8 +25,8 @@ async function token(overrides: Record<string, unknown> = {}) {
   const now = Math.floor(Date.now() / 1000);
   return new SignJWT({ iss: config.issuer, aud: config.audience, sub: "alice", iat: now, exp: now + 300, typ: "Bearer", scope: "xero:read", ...overrides }).setProtectedHeader({ alg: "RS256", kid: "fixture", typ: "JWT" }).sign(privateKey);
 }
-async function listening() {
-  const server = createRemoteServer(config, key);
+async function listening(configuration = config) {
+  const server = createRemoteServer(configuration, key);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const url = new URL(`http://127.0.0.1:${(server.address() as AddressInfo).port}/mcp`);
   return { server, url, close: () => new Promise<void>((resolve) => { server.closeAllConnections(); server.close(() => resolve()); }) };
@@ -104,4 +106,77 @@ describe("remote MCP protocol", () => {
       expect(get.mock.calls.map((call) => call[0]).sort()).toEqual([tenantA, tenantB]);
     } finally { await Promise.all([alice.close(), bob.close()]); await endpoint.close(); }
   });
+});
+
+
+it("exposes account coding only to the configured owner, client, action scope and tenant, with explicit activation", async () => {
+  vi.stubEnv("XERO_ALLOWED_TENANT_IDS", `${tenantA},${tenantB}`);
+  vi.stubEnv("XERO_TENANT_ACCESS_JSON", JSON.stringify({ [tenantA]: "read-write" }));
+  vi.stubEnv("XERO_CLIENT_BEARER_TOKEN", "synthetic-read-token");
+  vi.spyOn(TenantXeroClient.prototype, "authenticate").mockResolvedValue(undefined);
+  vi.spyOn(AccountingApi.prototype, "getBankTransaction").mockResolvedValue({ body: { bankTransactions: [transaction] }, response: {} } as Awaited<ReturnType<AccountingApi["getBankTransaction"]>>);
+  vi.spyOn(AccountingApi.prototype, "getAccounts").mockResolvedValue({ body: { accounts }, response: {} } as Awaited<ReturnType<AccountingApi["getAccounts"]>>);
+  const post = vi.spyOn(AccountingApi.prototype, "updateBankTransaction");
+  for (const [enabled, claims, allowed] of [
+    [true, { azp: "approved-client", scope: "xero:read xero:code" }, true],
+    [true, { azp: "approved-client", scope: "xero:read" }, false],
+    [true, { azp: "different-client", scope: "xero:read xero:code" }, false],
+    [true, { sub: "bob", azp: "approved-client", scope: "xero:read xero:code" }, false],
+    [false, { azp: "approved-client", scope: "xero:read xero:code" }, false],
+  ] as const) {
+    const endpoint = await listening({ ...config, subjectTenants: new Map([["alice", [tenantA, tenantB]], ["bob", [tenantB]]]), recoding: { subjects: ["alice"], clientId: "approved-client", scope: "xero:code", enabled, grantMode: "shared" } });
+    const client = new Client({ name: "coding-test", version: "1" });
+    try {
+      await client.connect(new StreamableHTTPClientTransport(endpoint.url, { requestInit: { headers: { Authorization: `Bearer ${await token(claims)}` } } }));
+      const names = (await client.listTools()).tools.map(tool => tool.name);
+      expect(names.includes("code-bank-transaction")).toBe(allowed);
+      expect(names.filter(name => !/^(list|get)-/.test(name))).toEqual(allowed ? ["code-bank-transaction"] : []);
+      if (allowed) {
+        const args = { bankTransactionId: transaction.bankTransactionID, changes, idempotencyKey: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" };
+        const denied = await client.callTool({ name: "code-bank-transaction", arguments: { tenantId: tenantB, ...args } });
+        expect(denied.isError).toBe(true);
+        expect(denied.content).toEqual([{ type: "text", text: expect.stringContaining("read-only") }]);
+        const receipt = await client.callTool({ name: "code-bank-transaction", arguments: { tenantId: tenantA, ...args } });
+        expect(receipt.isError).toBe(true);
+        expect(receipt.structuredContent).toMatchObject({ outcome: "not-applied", code: "grant" });
+        expect(receipt.structuredContent).not.toHaveProperty("before");
+      }
+    } finally { await client.close(); await endpoint.close(); }
+  }
+  expect(post).not.toHaveBeenCalled();
+});
+
+
+it("performs a direct coding call through signed-user request registration without approval state", async () => {
+  vi.stubEnv("XERO_ALLOWED_TENANT_IDS", tenantA);
+  vi.stubEnv("XERO_TENANT_ACCESS_JSON", JSON.stringify({ [tenantA]: "read-write" }));
+  vi.stubEnv("XERO_CLIENT_BEARER_TOKEN", "synthetic-read-token");
+  let record = structuredClone(transaction);
+  vi.spyOn(xeroClients, "configuredTokenProvider").mockReturnValue({ getTokenSet: async () => ({ scope: "accounting.banktransactions", access_token: "synthetic" }) });
+  vi.spyOn(TenantXeroClient.prototype, "authenticate").mockResolvedValue(undefined);
+  vi.spyOn(AccountingApi.prototype, "getBankTransaction").mockImplementation(async () => ({ body: { bankTransactions: [structuredClone(record)] }, response: {} }) as Awaited<ReturnType<AccountingApi["getBankTransaction"]>>);
+  vi.spyOn(AccountingApi.prototype, "getAccounts").mockResolvedValue({ body: { accounts }, response: {} } as Awaited<ReturnType<AccountingApi["getAccounts"]>>);
+  const post = vi.spyOn(AccountingApi.prototype, "updateBankTransaction").mockImplementation(async (...args) => {
+    record.lineItems = structuredClone(args[2].bankTransactions![0].lineItems);
+    return { body: { bankTransactions: [record] }, response: {} } as Awaited<ReturnType<AccountingApi["updateBankTransaction"]>>;
+  });
+  const endpoint = await listening({ ...config, recoding: { subjects: ["alice"], clientId: "approved-client", scope: "xero:code", enabled: true, grantMode: "shared" } });
+  const client = new Client({ name: "direct-coding-test", version: "1" });
+  try {
+    await client.connect(new StreamableHTTPClientTransport(endpoint.url, { requestInit: { headers: { Authorization: `Bearer ${await token({ azp: "approved-client", scope: "xero:read xero:code" })}` } } }));
+    const tools = (await client.listTools()).tools;
+    expect(tools.some(tool => /proposal|apply-bank/.test(tool.name))).toBe(false);
+    const coding = tools.find(tool => tool.name === "code-bank-transaction")!;
+    expect(coding.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: true });
+    expect(Object.keys(coding.inputSchema.properties!)).toEqual(expect.arrayContaining(["tenantId", "bankTransactionId", "changes", "idempotencyKey", "expectedUpdatedDateUTC"]));
+    const args = { tenantId: tenantA, bankTransactionId: transaction.bankTransactionID, changes, idempotencyKey: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee" };
+    const result = await client.callTool({ name: "code-bank-transaction", arguments: args });
+    expect(result, JSON.stringify(result)).toMatchObject({ isError: false });
+    expect(result.structuredContent).toMatchObject({ outcome: "updated", actor: "alice", preservationVerified: true, statementLinkageVerified: false });
+    expect(result.structuredContent).not.toHaveProperty("before"); expect(result.structuredContent).not.toHaveProperty("after");
+    post.mockRejectedValueOnce({ response: { statusCode: 403 } });
+    record = structuredClone(transaction);
+    const rejected = await client.callTool({ name: "code-bank-transaction", arguments: { ...args, idempotencyKey: "ffffffff-ffff-4fff-8fff-ffffffffffff" } });
+    expect(rejected.isError).toBe(true); expect(rejected.structuredContent).toMatchObject({ outcome: "rejected", httpStatus: 403 });
+  } finally { await client.close(); await endpoint.close(); }
 });

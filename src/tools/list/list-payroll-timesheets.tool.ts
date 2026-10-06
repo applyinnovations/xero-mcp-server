@@ -5,12 +5,13 @@ import {
 } from "../../handlers/list-xero-timesheets.handler.js";
 import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
 
-const ListPayrollTimesheetsTool = CreateXeroTool(
-  "list-timesheets",
-  `List all payroll timesheets in Xero.
+const ListPayrollTimesheetsTool = CreateXeroTool({
+  name: "list-timesheets",
+  description: `List all payroll timesheets in Xero.
 This retrieves comprehensive timesheet details including timesheet IDs, employee IDs, start and end dates, total hours, and the last updated date.`,
-  {},
-  async () => {
+  access: "read",
+  schema: {},
+  handler: async () => {
     const response = await listXeroPayrollTimesheets();
 
     if (response.isError) {
@@ -48,6 +49,6 @@ This retrieves comprehensive timesheet details including timesheet IDs, employee
       ],
     };
   },
-);
+});
 
 export default ListPayrollTimesheetsTool;

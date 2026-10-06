@@ -5,7 +5,7 @@ import { XeroMcpServer } from "./server/xero-mcp-server.js";
 import { ToolFactory } from "./tools/tool-factory.js";
 import { createRemoteServer } from "./server/remote-mcp-server.js";
 import { loadRemoteConfig } from "./auth/remote-auth.js";
-import { configuredTenantIds, configuredTokenProvider } from "./clients/xero-client.js";
+import { configuredTenantIds, configuredWritableTenantIds, configuredTokenProvider } from "./clients/xero-client.js";
 import { prepareTokenStore } from "./auth/prepare-token-store.js";
 import { z } from "zod";
 
@@ -14,6 +14,7 @@ const main = async () => {
   if (transportMode === "http") {
     if (!process.env.XERO_TOKEN_FILE) throw new Error("Remote MCP requires durable OAuth mode");
     const tenants = configuredTenantIds();
+    configuredWritableTenantIds();
     configuredTokenProvider();
     const config = loadRemoteConfig();
     if ([...config.subjectTenants.values()].some(ids => ids.some(id => !tenants.includes(id)))) {

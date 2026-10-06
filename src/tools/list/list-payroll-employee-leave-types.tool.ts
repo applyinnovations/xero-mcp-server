@@ -3,15 +3,16 @@ import { listXeroPayrollEmployeeLeaveTypes } from "../../handlers/list-xero-payr
 import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
 import { EmployeeLeaveType } from "../../types/payroll-nz-types.js";
 
-const ListPayrollEmployeeLeaveTypesTool = CreateXeroTool(
-  "list-payroll-employee-leave-types",
-  "List all leave types available for a specific employee in Xero. This shows detailed information about the types of leave an employee can take, including schedule of accrual, leave type name, and entitlement.",
-  {
+const ListPayrollEmployeeLeaveTypesTool = CreateXeroTool({
+  name: "list-payroll-employee-leave-types",
+  description: "List all leave types available for a specific employee in Xero. This shows detailed information about the types of leave an employee can take, including schedule of accrual, leave type name, and entitlement.",
+  access: "read",
+  schema: {
     employeeId: z
       .string()
       .describe("The Xero employee ID to fetch leave types for"),
   },
-  async ({ employeeId }) => {
+  handler: async ({ employeeId }) => {
     const response = await listXeroPayrollEmployeeLeaveTypes(employeeId);
     if (response.isError) {
       return {
@@ -62,6 +63,6 @@ const ListPayrollEmployeeLeaveTypesTool = CreateXeroTool(
       ],
     };
   },
-);
+});
 
 export default ListPayrollEmployeeLeaveTypesTool;

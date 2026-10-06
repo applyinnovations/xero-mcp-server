@@ -288,10 +288,8 @@ reads SPEND/RECEIVE only, defaults to reconciled transactions, and supports
 page. Concurrent changes can affect pagination, so it is not a snapshot export.
 `get-bank-transaction` retrieves one full SPEND/RECEIVE record by ID.
 
-Write tools are not registered. Enabling recoding requires later approval and a
-Demo Company test proving that the original statement-line match survives an
-in-place update, along with unchanged transaction/line IDs, tracking not selected
-for change, tax, currency and totals. An `isReconciled` flag alone is insufficient.
+Write tools are disabled by default. See [Account coding tool](#account-coding-tool)
+for permissions, configuration and reconciliation-verification requirements.
 
 ## Durable OAuth refresh
 
@@ -330,8 +328,8 @@ This store is for one grant on a single host/local filesystem, not distributed
 replicas or network filesystems. A crash during refresh may leave a `.lock`
 directory. Requests fail closed after a bounded wait; an operator must establish
 that no process owns the lock before removing it. Errors exposed through MCP are
-redacted. Live refresh/revocation testing remains subject to approved Demo Company
-access; tests use only synthetic token sets and mocked HTTP responses.
+redacted. Live refresh/revocation tests require separately approved access;
+automated tests use only synthetic token sets and mocked HTTP responses.
 
 ## Authenticated remote MCP with an OIDC issuer
 
@@ -339,8 +337,8 @@ Select `MCP_TRANSPORT=http` only when preparing an authenticated remote service.
 HTTP mode requires the durable OAuth configuration above and an explicit server
 `XERO_ALLOWED_TENANT_IDS` allowlist. The default bind is `127.0.0.1:3000`; set
 `MCP_HOST`/`MCP_PORT` for the intended network only during an approved deployment.
-Production traffic must use a TLS reverse proxy. This PR provides no deployment
-or identity-provider configuration changes.
+Production traffic must use a TLS reverse proxy. Configure deployment and the
+identity provider separately.
 
 Required settings:
 
@@ -433,10 +431,9 @@ fixtures, not live compatibility with a provider or client application.
 
 Before rollout, verify the actual issuer's discovery, selected token profile, signing algorithm, dedicated
 audience, required scope, subject IDs and client discovery/PKCE compatibility.
-Validate token expiration/key rotation and test each authorised organisation with
-approved Demo Company access. Real recoding still requires explicit approval and
-proof that the original statement-line match survives; no flag-setting,
-unreconcile/delete/recreate workaround is enabled.
+Validate token expiration/key rotation and authorised reads with approved access.
+Account-coding acceptance must verify field preservation and actual statement
+linkage before wider use; the API reconciliation flag alone is insufficient.
 
 
 ## Hosted owner-authorized Xero PKCE onboarding
@@ -527,9 +524,8 @@ protected. Back up the current encrypted state and key separately.
 
 Tests use synthetic keys/tokens and mocked Xero endpoints. Real app consent,
 browser/hosted-client behavior, issued-token/scopes, all organisations and durable
-refresh/restart require separately approved live acceptance. Accounting write
-tools remain unregistered; bank reconciliation-preserving recoding still requires
-its independent Demo Company proof.
+refresh/restart require live acceptance checks. Account coding is disabled by
+default and requires the action/OAuth permissions described below.
 
 ### xlab CI
 
@@ -545,3 +541,96 @@ provenance. PipelineRun results expose the image digest; deployments should pin
 that tested digest. The shared builder/registry do not enforce immutable SHA tags
 against a rebuild, and the current semver pruner skips SHA-only repositories.
 CI does not connect to Xero, enable writes or deploy the MCP service.
+
+## Account coding tool
+
+Use `list-bank-transactions` / `get-bank-transaction` for inspection and
+`list-accounts` for the chart. The agent collaborates with the user and manages
+approval independently. The server exposes one focused mutation:
+
+```json
+{
+  "tenantId": "<coding-tenant-uuid>",
+  "bankTransactionId": "<existing-transaction-uuid>",
+  "changes": [{ "lineItemId": "<existing-line-uuid>", "accountCode": "500", "expectedAccountCode": "400" }],
+  "idempotencyKey": "<caller-generated-request-uuid>",
+  "expectedUpdatedDateUTC": "2026-01-02T00:00:00Z"
+}
+```
+
+Call `code-bank-transaction` directly after the agent/client's approval process.
+`expectedAccountCode` and `expectedUpdatedDateUTC` are optional technical stale-state
+checks from ordinary reads. No full transaction package is passed as input. The
+handler fetches current state and chart internally, validates the selected lines
+and active non-bank targets, and changes only account code and its associated GL
+account ID. Descriptions/references, transaction/line IDs, untouched lines,
+tracking, explicit tax coding/amounts, quantities/amounts, currency/rate and totals
+are preserved and checked through a GET after one targeted POST with `unitdp=4`.
+Computed totals, currency/rate read fields and `IsReconciled` are omitted from POST.
+
+Existing authorised SPEND/RECEIVE entries may be reconciled or unreconciled;
+`list-bank-transactions` with `reconciledOnly: false` includes both states. Raw
+bank-feed statement lines, GST/tax edits, line creation/deletion, payments,
+transfers and lodgements are excluded. No generic CRUD write tools are registered.
+
+The compact result includes IDs, caller's idempotency key, actor, completion time,
+selected account-code differences and outcome (`updated`, `unchanged`,
+`not-applied`, `rejected`, `unknown` or `drift`). Errors set MCP `isError: true`;
+known Xero rejection status is reported without credentials or raw error payloads.
+Unknown outcomes and post-write drift require inspection through ordinary reads
+and Xero's statement UI before retrying or undoing. Reuse an idempotency key only
+for the identical upstream request. [Xero caches keys for six minutes from the
+first call and compares the actual URL, body and HTTP method](https://developer.xero.com/documentation/guides/idempotent-requests/idempotency/);
+after expiry, reuse is processed as a new request. This handler rebuilds the POST
+from fresh reads, so identical MCP arguments after an external edit can produce a
+different upstream body. The key is not an unlimited replay guarantee; inspect
+uncertain outcomes before another call. The server never retries or persists
+receipts. The agent/client records results and any before/after evidence it needs.
+Only a small in-flight set rejects overlapping local calls for the same transaction; it is
+released on completion and stores no approval or outcome state.
+
+Company access is shared across the entire MCP. `XERO_ALLOWED_TENANT_IDS` and
+`MCP_SUBJECT_TENANTS_JSON` retain their read-access meaning. Set
+`XERO_TENANT_ACCESS_JSON` to a JSON object mapping allowed tenant UUIDs to
+`read-only` or `read-write`; omitted companies default to read-only. Unknown
+companies or invalid values fail startup. All SDK API clients check the actual
+HTTP method and final tenant header before sending a request. Every mutation
+requires both the shared company policy and verified request write permission;
+a readable company cannot become writable by changing tool arguments or headers.
+Every tool definition requires explicit `access: "read"` or `access: "write"`
+metadata. Central registration rejects missing classifications and derives MCP
+read-only hints from that field. Read invocations discard request write authority;
+company mutations require the shared write guard regardless of tool name.
+Existing create/update/delete tools remain unregistered. Owner-only OAuth onboarding manages read connectivity separately;
+it does not mutate company records or request write consent.
+
+`XERO_RECODING_ENABLED` defaults to `false`. Enabled HTTP configuration requires
+mapped read subjects in `MCP_RECODE_SUBJECTS_JSON`, `MCP_RECODE_CLIENT_ID`, and a
+separate action scope `MCP_RECODE_SCOPE` (default `xero:code`). Only matching
+verified user/client tokens with read and coding scopes and access to a shared
+read-write company see `code-bank-transaction`. Each call rechecks company access.
+There is no separate coding tenant policy. Stdio never registers the coding tool
+or establishes request write permission.
+
+Choose an explicit approved `XERO_RECODING_GRANT_MODE=shared` or `separate`.
+Coding requires actual Xero consent for `accounting.banktransactions`; read-only
+consent and token refresh cannot add it. Shared uses the existing grant; adding
+`accounting.banktransactions` broadens that grant across all connected tenants,
+while the shared server company policy still denies all mutations for read-only
+companies. Separate uses an independently approved PKCE app/grant in
+`XERO_RECODING_TOKEN_FILE`,
+`XERO_RECODING_TOKEN_KEY_FILE`, `XERO_RECODING_CLIENT_ID`, with a distinct app ID,
+non-aliased token state (including symlinks/hard links), and only the coding tenant.
+Grant construction, consent scope and connected-tenant checks belong to the auth
+layer. Neither consent nor credentials are created by this tool.
+
+Xero documents no conditional `If-Match`; optional preconditions and the local
+in-flight guard do not eliminate outside edits between GET and POST. Coordinate
+other edits of the selected transaction during validation. Receipts always report
+`statementLinkageVerified: false`; `IsReconciled` alone cannot prove the actual
+statement match survived. Before wider use, compare complete before/after records
+for unchanged IDs, tracking, tax, currency and totals, and follow the same existing
+imported statement line in Xero to verify it still links to the identical bank
+transaction ID and bank account. Record that external witness separately. Do not
+unreconcile, recreate matches or force the reconciliation flag to manufacture
+proof. Each account assignment requires the user's approval through the client.

@@ -2,13 +2,14 @@ import { z } from "zod";
 import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
 import { createXeroTrackingCategory } from "../../handlers/create-xero-tracking-category.handler.js";
 
-const CreateTrackingCategoryTool = CreateXeroTool(
-  "create-tracking-category",
-  `Create a tracking category in Xero.`,
-  {
+const CreateTrackingCategoryTool = CreateXeroTool({
+  name: "create-tracking-category",
+  description: `Create a tracking category in Xero.`,
+  access: "write",
+  schema: {
     name: z.string()
   },
-  async ({ name }) => {
+  handler: async ({ name }) => {
     const response = await createXeroTrackingCategory(name);
 
     if (response.isError) {
@@ -32,7 +33,7 @@ const CreateTrackingCategoryTool = CreateXeroTool(
         },
       ]
     };
-  }
-);
+  },
+});
 
 export default CreateTrackingCategoryTool;

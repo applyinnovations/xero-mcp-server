@@ -8,10 +8,11 @@ import {
 } from "../../handlers/update-xero-payroll-timesheet-update-line.handler.js";
 import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
 
-const UpdatePayrollTimesheetLineTool = CreateXeroTool(
-  "update-timesheet-line",
-  `Update an existing timesheet line in a payroll timesheet in Xero.`,
-  {
+const UpdatePayrollTimesheetLineTool = CreateXeroTool({
+  name: "update-timesheet-line",
+  description: `Update an existing timesheet line in a payroll timesheet in Xero.`,
+  access: "write",
+  schema: {
     timesheetID: z.string().describe("The ID of the timesheet to update."),
     timesheetLineID: z.string().describe("The ID of the timesheet line to update."),
     timesheetLine: z.object({
@@ -20,7 +21,7 @@ const UpdatePayrollTimesheetLineTool = CreateXeroTool(
       date: z.string().describe("The date for the timesheet line (YYYY-MM-DD)."),
     }).describe("The details of the timesheet line to update."),
   },
-  async (params: { timesheetID: string; timesheetLineID: string; timesheetLine: TimesheetLine }) => {
+  handler: async (params: { timesheetID: string; timesheetLineID: string; timesheetLine: TimesheetLine }) => {
     const { timesheetID, timesheetLineID, timesheetLine } = params;
     const response = await updateXeroPayrollTimesheetUpdateLine(timesheetID, timesheetLineID, timesheetLine);
 
@@ -46,6 +47,6 @@ const UpdatePayrollTimesheetLineTool = CreateXeroTool(
       ],
     };
   },
-);
+});
 
 export default UpdatePayrollTimesheetLineTool;

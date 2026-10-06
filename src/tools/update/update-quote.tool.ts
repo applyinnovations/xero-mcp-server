@@ -11,15 +11,16 @@ const lineItemSchema = z.object({
   taxType: z.string(),
 });
 
-const UpdateQuoteTool = CreateXeroTool(
-  "update-quote",
-  "Update a quote in Xero. Only works on draft quotes.\
+const UpdateQuoteTool = CreateXeroTool({
+  name: "update-quote",
+  description: "Update a quote in Xero. Only works on draft quotes.\
   All line items must be provided. Any line items not provided will be removed. Including existing line items.\
   Do not modify line items that have not been specified by the user. \
  When a quote is updated, a deep link to the quote in Xero is returned. \
  This deep link can be used to view the quote in Xero directly. \
  This link should be displayed to the user.",
-  {
+  access: "write",
+  schema: {
     quoteId: z.string(),
     lineItems: z.array(lineItemSchema).optional().describe(
       "All line items must be provided. Any line items not provided will be removed. Including existing line items. \
@@ -34,7 +35,7 @@ const UpdateQuoteTool = CreateXeroTool(
     date: z.string().optional(),
     expiryDate: z.string().optional(),
   },
-  async (
+  handler: async (
     {
       quoteId,
       lineItems,
@@ -93,6 +94,6 @@ const UpdateQuoteTool = CreateXeroTool(
       ],
     };
   },
-);
+});
 
 export default UpdateQuoteTool; 

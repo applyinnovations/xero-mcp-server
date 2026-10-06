@@ -4,18 +4,19 @@ import { DeepLinkType, getDeepLink } from "../../helpers/get-deeplink.js";
 import { ensureError } from "../../helpers/ensure-error.js";
 import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
 
-const CreateContactTool = CreateXeroTool(
-  "create-contact",
-  "Create a contact in Xero.\
+const CreateContactTool = CreateXeroTool({
+  name: "create-contact",
+  description: "Create a contact in Xero.\
   When a contact is created, a deep link to the contact in Xero is returned. \
   This deep link can be used to view the contact in Xero directly. \
   This link should be displayed to the user.",
-  {
+  access: "write",
+  schema: {
     name: z.string(),
     email: z.string().email().optional(),
     phone: z.string().optional(),
   },
-  async ({ name, email, phone }) => {
+  handler: async ({ name, email, phone }) => {
     try {
       const response = await createXeroContact(name, email, phone);
       if (response.isError) {
@@ -61,6 +62,6 @@ const CreateContactTool = CreateXeroTool(
       };
     }
   },
-);
+});
 
 export default CreateContactTool;

@@ -11,18 +11,19 @@ const lineItemSchema = z.object({
   taxType: z.string(),
 });
 
-const CreateCreditNoteTool = CreateXeroTool(
-  "create-credit-note",
-  "Create a credit note in Xero.\
+const CreateCreditNoteTool = CreateXeroTool({
+  name: "create-credit-note",
+  description: "Create a credit note in Xero.\
  When a credit note is created, a deep link to the credit note in Xero is returned. \
  This deep link can be used to view the credit note in Xero directly. \
  This link should be displayed to the user.",
-  {
+  access: "write",
+  schema: {
     contactId: z.string(),
     lineItems: z.array(lineItemSchema),
     reference: z.string().optional(),
   },
-  async ({ contactId, lineItems, reference }) => {
+  handler: async ({ contactId, lineItems, reference }) => {
     const result = await createXeroCreditNote(contactId, lineItems, reference);
     if (result.isError) {
       return {
@@ -59,6 +60,6 @@ const CreateCreditNoteTool = CreateXeroTool(
       ],
     };
   },
-);
+});
 
 export default CreateCreditNoteTool;

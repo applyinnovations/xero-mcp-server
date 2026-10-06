@@ -11,13 +11,14 @@ const lineItemSchema = z.object({
   taxType: z.string(),
 });
 
-const CreateQuoteTool = CreateXeroTool(
-  "create-quote",
-  "Create a quote in Xero.\
+const CreateQuoteTool = CreateXeroTool({
+  name: "create-quote",
+  description: "Create a quote in Xero.\
  When a quote is created, a deep link to the quote in Xero is returned. \
  This deep link can be used to view the quote in Xero directly. \
  This link should be displayed to the user.",
-  {
+  access: "write",
+  schema: {
     contactId: z.string(),
     lineItems: z.array(lineItemSchema),
     reference: z.string().optional(),
@@ -26,7 +27,7 @@ const CreateQuoteTool = CreateXeroTool(
     title: z.string().optional(),
     summary: z.string().optional(),
   },
-  async ({
+  handler: async ({
     contactId,
     lineItems,
     reference,
@@ -79,6 +80,6 @@ const CreateQuoteTool = CreateXeroTool(
       ],
     };
   },
-);
+});
 
 export default CreateQuoteTool;
