@@ -1,5 +1,54 @@
 import { AxiosError } from "axios";
 
+// xero-node 13 serializes ApiError.generateError(), including credential-bearing
+// request headers, before rejecting. Parse for inspection; never return the envelope.
+function parsedError(error: unknown): unknown {
+  if (typeof error !== "string" || error.length > 1_048_576) return error;
+  try { return JSON.parse(error); } catch { return undefined; }
+}
+
+function object(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === "object" ? value as Record<string, unknown> : undefined;
+}
+
+function safeMessage(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  return value.replace(/\bBearer\s+[^\s,;"']+/gi, "Bearer [redacted]")
+    .replace(/\p{Cc}/gu, " ").slice(0, 512);
+}
+
+/** Extract only provider validation messages, never echoed records or headers. */
+export function xeroValidationMessages(body: unknown): string[] {
+  const root = object(body), messages: string[] = [];
+  const add = (element: unknown) => {
+    const item = object(element), errors = item?.ValidationErrors ?? item?.validationErrors;
+    if (!Array.isArray(errors)) return;
+    for (const error of errors.slice(0, 10)) {
+      const entry = object(error), message = safeMessage(entry?.Message ?? entry?.message);
+      if (message && !messages.includes(message) && messages.length < 10) messages.push(message);
+    }
+  };
+  add(root);
+  for (const key of ["Elements", "BankTransactions", "bankTransactions"]) {
+    const elements = root?.[key];
+    if (Array.isArray(elements)) for (const element of elements.slice(0, 50)) add(element);
+  }
+  return messages;
+}
+
+/** Normalize object and serialized SDK failures using a small return-field allowlist. */
+export function xeroErrorDetails(error: unknown): { httpStatus?: number; providerMessage?: string; validationMessages: string[] } {
+  const parsed = object(parsedError(error)), response = object(parsed?.response);
+  const status = response?.statusCode ?? response?.status;
+  const httpStatus = typeof status === "number" && Number.isInteger(status) && status >= 100 && status <= 599 ? status : undefined;
+  const body = response?.body ?? response?.data ?? parsed?.body;
+  return { ...(httpStatus !== undefined ? { httpStatus,
+    // Rebuild only the allowed provider response. A generic Error with an attached
+    // status must not expose its arbitrary message, request or headers.
+    providerMessage: formatError({ response: { statusCode: httpStatus, body } }) } : {}),
+    validationMessages: xeroValidationMessages(body) };
+}
+
 interface XeroSdkProblem {
   title?: string;
   detail?: string;
@@ -42,15 +91,15 @@ function formatHttpStatus(status: number): string {
 /**
  * Format error messages for return to the LLM.
  *
- * Never stringify unknown error objects — the xero-node SDK rejects with a
- * plain object whose `request.headers.authorization` field contains the
+ * Never stringify unknown error objects — the xero-node SDK rejects with an
+ * object or serialized envelope whose request headers contain the
  * caller's Bearer token. Whitelist the fields we extract so secrets never
  * reach the response.
  */
 export function formatError(error: unknown): string {
   if (error instanceof AxiosError) {
     const status = error.response?.status;
-    const detail = error.response?.data?.Detail;
+    const detail = safeMessage(error.response?.data?.Detail);
 
     if (status !== undefined) {
       const mapped = formatHttpStatus(status);
@@ -59,15 +108,16 @@ export function formatError(error: unknown): string {
     return detail || "An error occurred while communicating with Xero.";
   }
 
-  if (isXeroSdkError(error)) {
-    const status = error.response.statusCode;
+  const parsed = parsedError(error);
+  if (isXeroSdkError(parsed)) {
+    const status = parsed.response.statusCode;
     const mapped = formatHttpStatus(status);
     if (mapped) return mapped;
 
-    const body = error.response.body;
+    const body = parsed.response.body;
     const problem = body?.problem;
-    const title = problem?.title ?? body?.httpStatusCode ?? "HTTP error";
-    const detail = problem?.detail ?? body?.Detail;
+    const title = safeMessage(problem?.title ?? body?.httpStatusCode) ?? "HTTP error";
+    const detail = safeMessage(problem?.detail ?? body?.Detail);
     return detail ? `${status} ${title}: ${detail}` : `${status} ${title}`;
   }
 

@@ -616,7 +616,12 @@ tools remain separate operations, governed by the same shared company permission
 The compact result includes IDs, caller's idempotency key, actor, completion time,
 selected account-code differences and outcome (`updated`, `unchanged`,
 `not-applied`, `rejected`, `unknown` or `drift`). Errors set MCP `isError: true`;
-known Xero rejection status is reported without credentials or raw error payloads.
+Known Xero rejection status and bounded provider validation messages are reported
+without request headers, credentials, echoed records or raw error payloads. This
+includes the serialized JSON error envelopes emitted by the installed Xero SDK.
+Timeouts, unrecognized failures and server errors remain `unknown`; a failed
+verification after an acknowledged write also remains uncertain. An unchanged
+later read alone cannot establish the original provider response or justify a retry.
 Unknown outcomes and post-write drift require inspection through ordinary reads
 and Xero's statement UI before retrying or undoing. Reuse an idempotency key only
 for the identical upstream request. [Xero caches keys for six minutes from the
