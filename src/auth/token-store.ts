@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { mkdir, open, rename, rm, unlink } from "node:fs/promises";
 import { dirname, isAbsolute } from "node:path";
@@ -11,6 +11,8 @@ export const storedTokenSchema = z.object({
   expires_at: z.number().int().positive(),
   scope: z.string().optional(),
   reauthorizeRequired: z.boolean().optional(),
+  // Changes only when consent/import replaces the grant, not on token refresh.
+  grantRevision: z.string().uuid().optional(),
 });
 export type StoredTokens = z.infer<typeof storedTokenSchema>;
 const envelopeSchema = z.object({ version: z.literal(1), iv: z.string(), tag: z.string(), ciphertext: z.string() });
@@ -104,7 +106,7 @@ export class EncryptedTokenStore {
     await this.withLock(async () => {
       try { const file = await open(this.path, "r"); await file.close(); }
       catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") { await this.write(tokens); return; }
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") { await this.write({ ...tokens, grantRevision: randomUUID() }); return; }
         throw error;
       }
       throw new Error("OAuth state already exists; import refuses to replace a configured grant");

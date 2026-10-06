@@ -54,6 +54,6 @@ export class DurableOAuthProvider implements XeroTokenProvider {
       throw new Error("Xero token refresh failed");
     }
     const refreshed = refreshSchema.parse(await response.json());
-    return { access_token: refreshed.access_token, refresh_token: refreshed.refresh_token, expires_at: now + refreshed.expires_in, scope: refreshed.scope ?? tokens.scope };
+    return { ...tokens, access_token: refreshed.access_token, refresh_token: refreshed.refresh_token, expires_at: now + refreshed.expires_in, scope: refreshed.scope ?? tokens.scope };
   }
 }

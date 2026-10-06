@@ -535,9 +535,15 @@ must use the same Xero account and show the identical configured organisation
 set. Review `requestedScopes`, `grantedScopes` and every organisation through
 `get-xero-connection-status`; only after the owner confirms that review may
 `confirm-xero-connection` replace state under the existing refresh/import lock.
-It rechecks the current grant's account and scopes, tolerating normal refresh
-rotation while refusing a changed grant. No feature-specific renewal mode, scope
-branch, credentials, store or permission configuration is introduced.
+It rechecks the current grant's revision, account and scopes under the same lock,
+tolerating normal refresh rotation while refusing a newer consent replacement,
+even for the identical account, scopes and organisations. The optional encrypted
+`grantRevision` is minted by initial import/consent and each confirmed renewal;
+refresh and revoked markers retain it. Legacy state without a revision remains
+readable and keeps that absence through refresh until confirmed renewal assigns
+a revision. All processes sharing the store must run the updated version. No
+feature-specific renewal mode, scope branch, credentials, store or permission
+configuration is introduced.
 
 Unconfirmed candidates stay in the existing in-memory transaction. Denial,
 expiry, mismatched account/scopes/tenants, or failed validation leaves existing
@@ -673,8 +679,9 @@ Onboarding requests and validates the configured operator-approved `XERO_SCOPES`
 the default remains read-only. Write consent requires an explicitly requested
 renewal and human browser consent followed by confirmation. Broadening the normal grant
 affects its connected companies, while the shared server policy still denies all
-mutations for read-only companies. Existing state format, key and client binding
-are unchanged. Neither consent nor credentials are created by this tool.
+mutations for read-only companies. The existing envelope, key and client binding
+are unchanged; the encrypted payload gains an optional grant revision. Neither
+consent nor credentials are created by this tool.
 
 Xero documents no conditional `If-Match`; optional preconditions and the local
 in-flight guard do not eliminate outside edits between GET and POST. Coordinate

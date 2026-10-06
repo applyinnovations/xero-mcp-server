@@ -8,6 +8,7 @@ import { request as httpRequest } from "node:http";
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT, JWTVerifyGetKey } from "jose";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { DurableOAuthProvider } from "../oauth-provider.js";
 import { EncryptedTokenStore } from "../token-store.js";
 import { XeroOnboarding } from "../xero-onboarding.js";
 import { configuredXeroScopes, onboardingScopes, exchangeXeroCode, getXeroConnections } from "../xero-authorization.js";
@@ -63,8 +64,8 @@ afterEach(async () => {
   for (const close of closing.splice(0)) await close();
   await rm(directory, { recursive: true, force: true }); vi.unstubAllEnvs(); vi.restoreAllMocks();
 });
-async function endpoint(allowedTenantIds: string[] = [], scopes?: readonly string[]) {
-  const onboarding = new XeroOnboarding({ origin, clientId, store, allowedTenantIds, scopes, fetcher: request, now: () => now });
+async function endpoint(allowedTenantIds: string[] = [], scopes?: readonly string[], selectedStore = store) {
+  const onboarding = new XeroOnboarding({ origin, clientId, store: selectedStore, allowedTenantIds, scopes, fetcher: request, now: () => now });
   const server = createRemoteServer(config, key, onboarding);
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -238,7 +239,7 @@ async function healthyGrant() {
   const tokens = { access_token: issuedToken(), refresh_token: "invalid-existing-refresh", expires_at: 9999999999,
     scope: onboardingScopes.join(" ") };
   await store.initialize(tokens);
-  return { tokens, disk: await readFile(statePath, "utf8") };
+  return { tokens: await store.read(), disk: await readFile(statePath, "utf8") };
 }
 
 // No feature-specific consent branch: the same configured scope path covers
@@ -356,15 +357,46 @@ describe("configured OAuth renewal", () => {
     expect(await readFile(statePath, "utf8")).toBe(disk);
   });
 
-  it("accepts normal refresh rotation of the same existing grant before confirmation", async () => {
+  it.each([false, true])("rejects older same-account/scope/tenant renewal after a newer consent replaces the shared grant (legacy=%s)", async legacy => {
+    const previous = await healthyGrant();
+    if (legacy) await store.withLock(() => store.write({ ...previous.tokens, grantRevision: undefined }));
+    const original = await store.read(); connectionOverride = connections;
+    // Separate store objects and onboarding instances simulate concurrent processes.
+    const secondStore = new EncryptedTokenStore(statePath, join(directory, "key"), clientId);
+    const older = await endpoint(tenants); const newer = await endpoint(tenants, undefined, secondStore);
+    const [oldLink, newLink] = await Promise.all([
+      older.onboarding.begin("owner", { renewGrant: true }), newer.onboarding.begin("owner", { renewGrant: true }),
+    ]);
+    await callback(older, await launch(older, oldLink));
+    await callback(newer, await launch(newer, newLink));
+    expect((await newer.onboarding.confirm("owner", newLink.transactionId, tenants)).phase).toBe("complete");
+    const replacement = await secondStore.read(); const disk = await readFile(statePath, "utf8");
+    expect(replacement.grantRevision).toBeDefined(); expect(replacement.grantRevision).not.toBe(original.grantRevision);
+    expect(replacement.scope).toBe(original.scope); expect(replacement.refresh_token).toBe("invalid-fixture-refresh-2");
+    await expect(older.onboarding.confirm("owner", oldLink.transactionId, tenants)).rejects.toThrow();
+    expect(older.onboarding.status("owner", oldLink.transactionId).phase).toBe("failed");
+    expect(await secondStore.read()).toEqual(replacement); expect(await readFile(statePath, "utf8")).toBe(disk);
+  });
+
+  it.each([false, true])("accepts actual provider refresh rotation while retaining the same grant revision (legacy=%s)", async legacy => {
     const previous = await healthyGrant(); const scopes = [...onboardingScopes, "accounting.contacts"];
-    grantedScopes = scopes; connectionOverride = connections;
+    if (legacy) await store.withLock(() => store.write({ ...previous.tokens, grantRevision: undefined }));
+    const original = await store.read(); grantedScopes = scopes; connectionOverride = connections;
     const web = await endpoint(tenants, scopes); const link = await web.onboarding.begin("owner", { renewGrant: true });
     await callback(web, await launch(web, link, scopes));
-    await store.withLock(() => store.write({ ...previous.tokens, access_token: issuedToken(), refresh_token: "invalid-rotated-refresh",
-      scope: [...onboardingScopes].reverse().join(" ") }));
+    const refresh = vi.fn<typeof fetch>(async (_input, options) => {
+      expect((options?.body as URLSearchParams).get("refresh_token")).toBe(original.refresh_token);
+      return new Response(JSON.stringify({ access_token: issuedToken(), refresh_token: "invalid-rotated-refresh",
+        expires_in: 1800, token_type: "Bearer", scope: [...onboardingScopes].reverse().join(" ") }));
+    });
+    const provider = new DurableOAuthProvider({ store: new EncryptedTokenStore(statePath, join(directory, "key"), clientId),
+      clientId, request: refresh, now: () => original.expires_at * 1000 });
+    const sdkTokens = await provider.getTokenSet(); const rotated = await store.read();
+    expect(refresh).toHaveBeenCalledOnce(); expect(rotated.refresh_token).toBe("invalid-rotated-refresh");
+    expect(rotated.grantRevision).toBe(original.grantRevision); expect(sdkTokens).not.toHaveProperty("grantRevision");
     expect((await web.onboarding.confirm("owner", link.transactionId, tenants)).phase).toBe("complete");
-    expect((await store.read()).scope).toBe(scopes.join(" "));
+    const confirmed = await store.read(); expect(confirmed.scope).toBe(scopes.join(" "));
+    expect(confirmed.grantRevision).not.toBe(original.grantRevision);
   });
 });
 

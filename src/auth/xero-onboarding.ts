@@ -1,4 +1,4 @@
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { z } from "zod";
 import { EncryptedTokenStore, StoredTokens } from "./token-store.js";
@@ -11,7 +11,7 @@ interface Transaction {
   authorization: ReturnType<typeof createXeroAuthorization>; tokens?: StoredTokens; xeroSubject?: string;
   connections: XeroConnection[];
   mode: "new" | "renew" | "recover";
-  previousScopes: readonly string[]; previousSubject?: string;
+  previousScopes: readonly string[]; previousSubject?: string; previousRevision?: string;
 }
 interface Options {
   origin: string; clientId: string; store: EncryptedTokenStore; allowedTenantIds?: readonly string[];
@@ -85,7 +85,7 @@ export class XeroOnboarding {
         if (mode === "renew" && !previousScopes.length) throw new XeroOnboardingError(409);
         const tx: Transaction = { id: randomBytes(24).toString("base64url"), owner, expires: this.now() + 900000,
           nonceExpires: 0, phase: "launch", authorization: createXeroAuthorization(this.options.clientId, `${this.origin}/xero/callback`, this.scopes),
-          connections: [], mode, previousScopes, previousSubject, xeroSubject: previousSubject };
+          connections: [], mode, previousScopes, previousSubject, previousRevision: previous?.grantRevision, xeroSubject: previousSubject };
         this.transaction = tx;
         clearTimeout(this.expiryTimer);
         this.expiryTimer = setTimeout(() => { if (this.transaction === tx) this.transaction = undefined; }, 900000);
@@ -122,12 +122,12 @@ export class XeroOnboarding {
         if (tx.mode === "new" ? existing : !existing) throw new XeroOnboardingError(409);
         if (tx.mode !== "new") {
           const previous = await this.options.store.read();
-          if (tx.mode === "recover" && !previous.reauthorizeRequired) throw new XeroOnboardingError(409);
+          if (previous.grantRevision !== tx.previousRevision || (tx.mode === "recover" && !previous.reauthorizeRequired)) throw new XeroOnboardingError(409);
           const currentScopes = scopesOf(previous.scope);
           if (!sameScopes(tx.previousScopes, currentScopes)
             || (tx.previousSubject && storedSubject(previous, this.options.clientId) !== tx.previousSubject)) throw new XeroOnboardingError(409);
         }
-        await this.options.store.write(tx.tokens!);
+        await this.options.store.write({ ...tx.tokens!, grantRevision: randomUUID() });
       });
       tx.tokens = undefined; tx.phase = "complete";
       return this.status(owner, id);
