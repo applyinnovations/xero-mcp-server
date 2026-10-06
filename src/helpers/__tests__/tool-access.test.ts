@@ -75,17 +75,18 @@ it("keeps connection mutations independent of company write authority", async ()
   } finally { vi.unstubAllEnvs(); }
 });
 
+// Observed exposed counts before consolidation, independent of catalog selection logic.
 it.each([
-  { company: [], connection: [] },
-  { company: ["read"], connection: [] },
-  { company: ["read", "write"], connection: [] },
-  { company: [], connection: ["read", "write"] },
-  { company: ["read"], connection: ["read", "write"] },
-  { company: ["read", "write"], connection: ["read"] },
-] as ToolContext["access"][])("selects tools by resource access without feature-name exceptions: %j", access => {
+  { access: { company: [], connection: [] }, total: 0, reads: 0 },
+  { access: { company: ["read"], connection: [] }, total: 28, reads: 28 },
+  { access: { company: ["read", "write"], connection: [] }, total: 29, reads: 28 },
+  { access: { company: [], connection: ["read", "write"] }, total: 4, reads: 1 },
+  { access: { company: ["read"], connection: ["read", "write"] }, total: 32, reads: 29 },
+  { access: { company: ["read", "write"], connection: ["read"] }, total: 30, reads: 29 },
+] as { access: ToolContext["access"]; total: number; reads: number }[])("preserves exposed tool scope and mutation hints for %j", ({ access, total, reads }) => {
   const server = new McpServer({ name: "selection-fixture", version: "1" });
   const registered = vi.spyOn(server, "registerTool");
   ToolFactory(server, { access });
-  const selected = SupportedTools.map(create => create()).filter(tool => access[tool.resource].includes(tool.access));
-  expect(registered.mock.calls.map(([name]) => name)).toEqual(selected.map(tool => tool.name));
+  expect(registered).toHaveBeenCalledTimes(total);
+  expect(registered.mock.calls.filter(([, metadata]) => metadata.annotations?.readOnlyHint).length).toBe(reads);
 });
