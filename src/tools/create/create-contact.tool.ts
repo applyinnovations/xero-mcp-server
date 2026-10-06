@@ -10,7 +10,7 @@ const CreateContactTool = CreateXeroTool({
   When a contact is created, a deep link to the contact in Xero is returned. \
   This deep link can be used to view the contact in Xero directly. \
   This link should be displayed to the user.",
-  access: "write",
+  support: "upstream", access: "write",
   schema: {
     name: z.string(),
     email: z.string().email().optional(),

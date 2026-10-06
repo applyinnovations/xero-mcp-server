@@ -12,6 +12,7 @@ const trackingOptionSchema = z.object({
 const UpdateTrackingOptionsTool = CreateXeroTool({
   name: "update-tracking-options",
   description: `Updates tracking options for a tracking category in Xero.`,
+  support: "upstream",
   access: "write",
   schema: {
     trackingCategoryId: z.string(),

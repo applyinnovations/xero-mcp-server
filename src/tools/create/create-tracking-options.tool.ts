@@ -6,7 +6,7 @@ import { createXeroTrackingOptions } from "../../handlers/create-xero-tracking-o
 const CreateTrackingOptionsTool = CreateXeroTool({
   name: "create-tracking-options",
   description: `Create tracking options for a tracking category in Xero.`,
-  access: "write",
+  support: "upstream", access: "write",
   schema: {
     trackingCategoryId: z.string(),
     optionNames: z.array(z.string()).max(10)

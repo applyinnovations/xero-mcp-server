@@ -11,6 +11,7 @@ import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
 const UpdatePayrollTimesheetLineTool = CreateXeroTool({
   name: "update-timesheet-line",
   description: `Update an existing timesheet line in a payroll timesheet in Xero.`,
+  support: "upstream",
   access: "write",
   schema: {
     timesheetID: z.string().describe("The ID of the timesheet to update."),

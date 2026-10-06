@@ -8,6 +8,7 @@ import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
 const RevertPayrollTimesheetTool = CreateXeroTool({
   name: "revert-timesheet",
   description: `Revert a payroll timesheet to draft in Xero by its ID.`,
+  support: "upstream",
   access: "write",
   schema: {
     timesheetID: z.string().describe("The ID of the timesheet to revert."),

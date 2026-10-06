@@ -1,4 +1,5 @@
-import type { ToolBuilder } from "../../types/tool-definition.js";
+import DeletePayrollTimesheetTool from "./delete-payroll-timesheet.tool.js";
 
-// Existing delete implementations have not been admitted to the supported catalog.
-export const DeleteTools: readonly ToolBuilder[] = [];
+export const DeleteTools = [
+  DeletePayrollTimesheetTool
+];

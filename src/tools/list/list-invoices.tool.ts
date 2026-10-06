@@ -12,6 +12,7 @@ const ListInvoicesTool = CreateXeroTool({
   if 10 invoices are returned. \
   If they want the next page, call this tool again with the next page number \
   and the contact or invoice number if one was provided in the previous call.",
+  support: "maintained",
   access: "read",
   schema: {
     page: z.number(),

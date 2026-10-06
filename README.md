@@ -603,13 +603,20 @@ Every tool definition requires explicit `access: "read"` or `access: "write"`
 metadata. Central registration rejects missing classifications and derives MCP
 read-only hints from that field. Read invocations discard request write authority;
 company mutations require the shared write guard regardless of tool name.
-`SupportedTools` in `src/tools/index.ts` is the single runtime catalog used by
-stdio and HTTP. Category exports contain only supported tools; coding belongs to
-`UpdateTools`. Other generic create/update/delete implementations remain outside
-that catalog. Every definition has a `company` or `connection` resource alongside
-read/write access. The shared company factory supplies company metadata and tenant
-guards; connection definitions use the same builder and registrar with their
-existing service and verified owner context.
+`ToolCatalog` in `src/tools/index.ts` is the complete inventory used by stdio and
+HTTP. Category exports preserve all upstream tools: 11 creates, 13 updates plus
+coding, and one delete. Every definition declares static `support: "maintained"`
+or `support: "upstream"` metadata, independently of its resource and access.
+Entrypoints register maintained tools permitted by the caller's resource access;
+retained upstream implementations remain available in the inventory, with shared
+tenant guards, but are not registered by either transport. This preserves the
+fork's exposure without adding runtime flags or treating a category as an allowlist.
+Upstream v0.0.16 registered all CRUD tools over stdio; the fork restricted both
+transports to reads in its tenant-selection change before adding coding.
+Every definition has a `company` or `connection` resource alongside read/write
+access. The shared company factory supplies company metadata and tenant guards;
+connection definitions use the same builder and registrar with their existing
+service and verified owner context.
 
 Connection status is read access; beginning/continuing consent and confirming
 grant persistence are connection writes. They require existing connector

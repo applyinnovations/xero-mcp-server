@@ -6,7 +6,7 @@ import { ListTools } from "./list/index.js";
 import { UpdateTools } from "./update/index.js";
 import { ConnectionTools } from "./onboarding.js";
 
-// Only supported tools belong in these exports; legacy implementations remain unregistered.
-export const SupportedTools: readonly ToolBuilder[] = [
+// Complete inventory; entrypoints select maintained definitions using shared metadata.
+export const ToolCatalog: readonly ToolBuilder[] = [
   ...GetTools, ...ListTools, ...CreateTools, ...UpdateTools, ...DeleteTools, ...ConnectionTools,
 ];

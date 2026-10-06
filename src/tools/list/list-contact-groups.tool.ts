@@ -6,6 +6,7 @@ const ListContactGroupsTool = CreateXeroTool({
   name: "list-contact-groups",
   description: `List all contact groups in Xero.
   You can optionally specify a contact group ID to retrieve details for that specific group, including its contacts.`,
+  support: "maintained",
   access: "read",
   schema: {
     contactGroupId: z

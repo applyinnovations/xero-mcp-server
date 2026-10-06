@@ -5,6 +5,7 @@ import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
 const ListProfitAndLossTool = CreateXeroTool({
   name: "list-profit-and-loss",
   description: "Lists profit and loss report in Xero. This provides a summary of revenue, expenses, and profit or loss over a specified period of time.",
+  support: "maintained",
   access: "read",
   schema: {
     fromDate: z.string().optional().describe("Optional start date in YYYY-MM-DD format"),

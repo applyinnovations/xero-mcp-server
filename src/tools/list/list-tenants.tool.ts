@@ -5,7 +5,7 @@ import { formatError } from "../../helpers/format-error.js";
 export default CreateTool(() => ({
   name: "list-tenants",
   description: "List connected organisations allowed by this server. Select a tenantId explicitly for all accounting reads.",
-  resource: "company", access: "read", schema: {},
+  resource: "company", support: "maintained", access: "read", schema: {},
   handler: async () => {
     try {
       const result = { tenants: await connectedTenants() };

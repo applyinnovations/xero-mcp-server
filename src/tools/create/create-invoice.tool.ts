@@ -30,7 +30,7 @@ const CreateInvoiceTool = CreateXeroTool({
  When an invoice is created, a deep link to the invoice in Xero is returned. \
  This deep link can be used to view the invoice in Xero directly. \
  This link should be displayed to the user.",
-  access: "write",
+  support: "upstream", access: "write",
   schema: {
     contactId: z.string().describe("The ID of the contact to create the invoice for. \
       Can be obtained from the list-contacts tool."),

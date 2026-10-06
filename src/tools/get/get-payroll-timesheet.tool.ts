@@ -9,6 +9,7 @@ const GetPayrollTimesheetTool = CreateXeroTool({
   name: "get-timesheet",
   description: `Retrieve a single payroll timesheet from Xero by its ID.
 This provides details such as the timesheet ID, employee ID, start and end dates, total hours, and the last updated date.`,
+  support: "maintained",
   access: "read",
   schema: {
     timesheetID: z.string().describe("The ID of the timesheet to retrieve."),

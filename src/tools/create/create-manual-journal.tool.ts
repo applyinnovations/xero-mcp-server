@@ -12,7 +12,7 @@ const CreateManualJournalTool = CreateXeroTool({
   Journal lines must contain at least two individual journal lines with account codes, \
   use basic accounting account types pairing when not specified, \
   and make sure journal line pairs have credit and debit balanced.",
-  access: "write",
+  support: "upstream", access: "write",
   schema: {
     narration: z
       .string()

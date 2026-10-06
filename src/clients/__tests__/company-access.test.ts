@@ -120,7 +120,7 @@ it("prevents a declared read tool from mutating even when its caller has write p
   vi.stubEnv("XERO_CLIENT_BEARER_TOKEN", "synthetic-fixture");
   const selected = client(writable);
   const tool = CreateXeroTool({
-    name: "arbitrary-name", description: "Read contract", access: "read", schema: {},
+    name: "arbitrary-name", description: "Read contract", support: "maintained", access: "read", schema: {},
     handler: async () => {
       await selected.accountingApi.createAccount(writable, {});
       return { content: [] };

@@ -17,6 +17,7 @@ const salesDetailsSchema = z.object({
 const UpdateItemTool = CreateXeroTool({
   name: "update-item",
   description: "Update an item in Xero.",
+  support: "upstream",
   access: "write",
   schema: {
     itemId: z.string(),

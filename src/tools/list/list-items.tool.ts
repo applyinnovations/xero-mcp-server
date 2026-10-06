@@ -5,6 +5,7 @@ import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
 const ListItemsTool = CreateXeroTool({
   name: "list-items",
   description: "Lists all items in Xero. Use this tool to get the item codes and descriptions to be used when creating invoices in Xero",
+  support: "maintained",
   access: "read",
   schema: {
     page: z.number(),

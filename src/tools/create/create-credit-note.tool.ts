@@ -17,7 +17,7 @@ const CreateCreditNoteTool = CreateXeroTool({
  When a credit note is created, a deep link to the credit note in Xero is returned. \
  This deep link can be used to view the credit note in Xero directly. \
  This link should be displayed to the user.",
-  access: "write",
+  support: "upstream", access: "write",
   schema: {
     contactId: z.string(),
     lineItems: z.array(lineItemSchema),

@@ -6,6 +6,7 @@ import { ListReportBalanceSheetParams } from "../../types/list-report-balance-sh
 const ListReportBalanceSheetTool = CreateXeroTool({
   name: "list-report-balance-sheet",
   description: "List the Balance Sheet report from Xero.",
+  support: "maintained",
   access: "read",
   schema: {
     date: z.string().optional().describe("Optional date in YYYY-MM-DD format"),

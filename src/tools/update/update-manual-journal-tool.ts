@@ -9,6 +9,7 @@ const UpdateManualJournalTool = CreateXeroTool({
   name: "update-manual-journal",
   description: "Update a manual journal in Xero. Only works on draft manual journals.\
   Do not modify line items or parameters that have not been specified by the user.",
+  support: "upstream",
   access: "write",
   schema: {
     narration: z

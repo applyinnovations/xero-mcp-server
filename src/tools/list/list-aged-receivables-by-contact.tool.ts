@@ -7,6 +7,7 @@ const ListAgedReceivablesByContact = CreateXeroTool({
   name: "list-aged-receivables-by-contact",
   description: `Lists the aged receivables in Xero.
   This shows aged receivables for a certain contact up to a report date.`,
+  support: "maintained",
   access: "read",
   schema: {
     contactId: z.string(),

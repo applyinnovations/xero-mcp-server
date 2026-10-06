@@ -7,6 +7,7 @@ const ListAgedPayablesByContact = CreateXeroTool({
   name: "list-aged-payables-by-contact",
   description: `Lists the aged payables in Xero.
   This shows aged payables for a certain contact up to a report date.`,
+  support: "maintained",
   access: "read",
   schema: {
     contactId: z.string(),
