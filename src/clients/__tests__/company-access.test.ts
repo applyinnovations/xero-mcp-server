@@ -155,28 +155,52 @@ it("reports every company mutation's authentication failure as an MCP error with
   expect(received).toEqual([]);
 });
 
-it("keeps credentials out of inherited mutation result-link failures", async () => {
+it.each(["forbidden", "missing", "healthy"] as const)("preserves confirmed mutation results and IDs with %s optional links", async outcome => {
   vi.stubEnv("XERO_CLIENT_BEARER_TOKEN", "synthetic-fixture");
   vi.spyOn(TenantXeroClient.prototype, "authenticate").mockResolvedValue(undefined);
   const secret = "synthetic-post-write-credential-never-return";
-  const link = vi.spyOn(TenantXeroClient.prototype, "getShortCode").mockRejectedValue({
+  const link = vi.spyOn(TenantXeroClient.prototype, "getShortCode");
+  if (outcome === "forbidden") link.mockRejectedValue({
     response: { statusCode: 403 }, request: { headers: { authorization: secret } },
   });
-  const contact = { body: { contacts: [{ contactID: writable, name: "Fixture" }] }, response: {} };
-  const journal = { body: { manualJournals: [{ manualJournalID: writable, narration: "Fixture" }] }, response: {} };
-  vi.spyOn(AccountingApi.prototype, "createContacts").mockResolvedValue(contact as Awaited<ReturnType<AccountingApi["createContacts"]>>);
-  vi.spyOn(AccountingApi.prototype, "updateContact").mockResolvedValue(contact as Awaited<ReturnType<AccountingApi["updateContact"]>>);
-  vi.spyOn(AccountingApi.prototype, "createManualJournals").mockResolvedValue(journal as Awaited<ReturnType<AccountingApi["createManualJournals"]>>);
-  vi.spyOn(AccountingApi.prototype, "updateManualJournal").mockResolvedValue(journal as Awaited<ReturnType<AccountingApi["updateManualJournal"]>>);
-  for (const name of ["create-contact", "update-contact", "create-manual-journal", "update-manual-journal"]) {
+  else link.mockResolvedValue(outcome === "healthy" ? "CONFIRMED" : undefined);
+  const entityId = "22222222-2222-4222-8222-222222222222";
+  const response = { body: {
+    contacts: [{ contactID: entityId, name: "Fixture" }],
+    manualJournals: [{ manualJournalID: entityId, narration: "Fixture" }],
+    creditNotes: [{ creditNoteID: entityId, status: "DRAFT" }],
+    invoices: [{ invoiceID: entityId, status: "DRAFT", type: "ACCREC" }],
+    payments: [{ paymentID: entityId }], quotes: [{ quoteID: entityId, status: "DRAFT" }],
+  }, response: {} };
+  const operations = [
+    ["create-contact", "createContacts"], ["update-contact", "updateContact"],
+    ["create-manual-journal", "createManualJournals"], ["update-manual-journal", "updateManualJournal"],
+    ["create-credit-note", "createCreditNotes"], ["update-credit-note", "updateCreditNote"],
+    ["create-invoice", "createInvoices"], ["update-invoice", "updateInvoice"],
+    ["create-payment", "createPayment"], ["create-quote", "createQuotes"], ["update-quote", "updateQuote"],
+  ] as const;
+  for (const method of ["getCreditNote", "getInvoice", "getQuote"] as const) {
+    vi.spyOn(AccountingApi.prototype, method).mockResolvedValue(response as Awaited<ReturnType<AccountingApi[typeof method]>>);
+  }
+  const input = {
+    tenantId: writable, name: "Fixture", contactId: entityId, narration: "Fixture",
+    manualJournalID: entityId, invoiceId: entityId, creditNoteId: entityId, quoteId: entityId,
+    accountId: entityId, amount: 1,
+    manualJournalLines: [{ lineAmount: 1, accountCode: "400" }],
+    lineItems: [{ description: "Fixture", quantity: 1, unitAmount: 1, accountCode: "400", taxType: "NONE" }],
+  };
+  for (const [name, method] of operations) {
+    const mutation = vi.spyOn(AccountingApi.prototype, method).mockResolvedValue(response as Awaited<ReturnType<AccountingApi[typeof method]>>);
     const tool = ToolCatalog.map(create => create()).find(tool => tool.name === name)!;
     link.mockClear();
-    const result = await request(() => tool.handler({
-      tenantId: writable, name: "Fixture", contactId: writable, narration: "Fixture",
-      manualJournalID: writable, manualJournalLines: [{ lineAmount: 1, accountCode: "400" }],
-    }, {} as never));
+    const args = z.object(tool.schema).parse({ ...input, type: "ACCREC" });
+    const result = await request(() => tool.handler(args, {} as never));
+    expect(mutation, name).toHaveBeenCalledTimes(1);
     expect(link, name).toHaveBeenCalledTimes(1);
-    expect(result, name).toMatchObject({ isError: true, content: [{ text: expect.stringContaining("permission") }] });
+    expect(result.isError, name).not.toBe(true);
+    const text = JSON.stringify(result.content);
+    expect(text, name).toContain(entityId);
+    expect(text.includes("Link to view:"), name).toBe(outcome === "healthy");
     expect(JSON.stringify(result), name).not.toContain(secret);
   }
   expect(received).toEqual([]);
