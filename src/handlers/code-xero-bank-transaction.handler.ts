@@ -2,17 +2,11 @@ import { BankTransaction } from "xero-node";
 import { assertTenantWriteAccess, xeroClient } from "../clients/xero-client.js";
 import { bankCodingMatches, bankCodingPayload, BankCodingChanges, codeBankTransaction } from "../helpers/bank-account-coding.js";
 import { getClientHeaders } from "../helpers/get-client-headers.js";
+import { xeroErrorDetails, xeroValidationMessages } from "../helpers/format-error.js";
 
 // Only overlapping local I/O is retained; no approvals, proposals or receipts.
 const inFlight = new Set<string>();
-const rejectedStatuses = new Set([400, 401, 403, 404, 409, 422, 429]);
-function httpStatus(error: unknown): number | undefined {
-  if (!error || typeof error !== "object") return undefined;
-  const response = Reflect.get(error, "response");
-  if (!response || typeof response !== "object") return undefined;
-  const status = Reflect.get(response, "statusCode") ?? Reflect.get(response, "status");
-  return typeof status === "number" ? status : undefined;
-}
+const rejectedStatuses = new Set([400, 401, 403, 404, 405, 409, 413, 415, 422, 429]);
 
 export async function codeXeroBankTransaction(bankTransactionId: string, changes: BankCodingChanges,
   idempotencyKey: string, expectedUpdatedDateUTC?: string) {
@@ -42,8 +36,8 @@ export async function codeXeroBankTransaction(bankTransactionId: string, changes
     code = "write"; submitted = true;
     const response = await xeroClient.accountingApi.updateBankTransaction(tenantId, bankTransactionId, { bankTransactions: [bankCodingPayload(coded.transaction)] }, 4, idempotencyKey, getClientHeaders());
     const returned = response.body.bankTransactions?.[0];
+    if (returned?.validationErrors?.length) return done("rejected", { code: "xero-validation", validationMessages: xeroValidationMessages(response.body), message: "Xero rejected the account coding; inspect the reported validation messages and the transaction" });
     if (!returned || returned.bankTransactionID !== bankTransactionId) return done("unknown", { code: "update-response", message: "Update outcome is uncertain; inspect the transaction and statement match before retrying" });
-    if (returned?.validationErrors?.length) return done("rejected", { code: "xero-validation", message: "Xero rejected the account coding; inspect account eligibility and the transaction" });
     code = "verification";
     const after = (await xeroClient.accountingApi.getBankTransaction(tenantId, bankTransactionId, 4, getClientHeaders())).body.bankTransactions?.[0];
     if (!after) return done("unknown", { code, message: "Xero acknowledged the update but verification returned no record; inspect before retrying" });
@@ -51,9 +45,12 @@ export async function codeXeroBankTransaction(bankTransactionId: string, changes
     return done(preserved ? "updated" : "drift", { changes: coded.changes, preservationVerified: preserved, updatedDateUTC: after.updatedDateUTC,
       message: preserved ? "Account coding updated; statement linkage still requires the approved external witness" : "Unexpected post-update differences; inspect the transaction and statement match; do not blindly retry or undo" });
   } catch (error) {
-    const status = httpStatus(error);
+    const { httpStatus: status, providerMessage, validationMessages } = xeroErrorDetails(error);
+    // Explicit validation/auth/resource rejections are distinguishable from
+    // transport failures, request timeouts and 5xx responses after a possible commit.
     const rejected = submitted && code === "write" && status !== undefined && rejectedStatuses.has(status);
-    return done(submitted ? rejected ? "rejected" : "unknown" : "not-applied", { code, ...(status !== undefined ? { httpStatus: status } : {}),
+    return done(submitted ? rejected ? "rejected" : "unknown" : "not-applied", { code, ...(status !== undefined ? { httpStatus: status, providerMessage } : {}),
+      ...(validationMessages.length ? { validationMessages } : {}),
       message: submitted ? rejected ? "Xero rejected this request; review the reported HTTP status and current transaction" : "Update outcome or preservation is uncertain; inspect the transaction and statement match before retrying" : `No update submitted: ${code} check failed; review configuration or read current state` });
   } finally { inFlight.delete(key); }
 }

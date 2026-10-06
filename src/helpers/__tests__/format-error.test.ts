@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { AxiosError, AxiosHeaders } from "axios";
-import { formatError } from "../format-error.js";
+import { formatError, xeroErrorDetails, xeroValidationMessages } from "../format-error.js";
 
 function makeAxiosError(status: number, detail?: string): AxiosError {
   const headers = new AxiosHeaders();
@@ -61,6 +61,42 @@ describe("formatError", () => {
   });
 
   describe("xero-node SDK error shape", () => {
+    it("decodes the actual serialized SDK envelope without exposing request credentials or echoed records", () => {
+      const error = JSON.stringify({ response: { statusCode: 400,
+        request: { headers: { authorization: "Bearer SECRET_TOKEN", cookie: "SECRET_COOKIE" } },
+        headers: { "set-cookie": "SECRET_RESPONSE_COOKIE" },
+        body: { Elements: [{ Description: "PRIVATE_RECORD", ValidationErrors: [{ Message: "Account code is not valid for this document." }] }] },
+      } });
+      expect(xeroErrorDetails(error)).toEqual({ httpStatus: 400, providerMessage: "400 HTTP error", validationMessages: ["Account code is not valid for this document."] });
+      expect(formatError(error)).toBe("400 HTTP error");
+      for (const secret of ["SECRET_TOKEN", "SECRET_COOKIE", "PRIVATE_RECORD", "SECRET_RESPONSE_COOKIE"]) {
+        expect(JSON.stringify(xeroErrorDetails(error)) + formatError(error)).not.toContain(secret);
+      }
+    });
+
+    it("bounds provider messages and redacts bearer values in the allowed text fields", () => {
+      const error = JSON.stringify({ response: { statusCode: 400, body: {
+        Detail: "Invalid Bearer SECRET_TOKEN", ValidationErrors: [{ Message: "Bad Bearer SECRET_TOKEN\n" + "x".repeat(2000) }],
+      } } });
+      expect(formatError(error)).toBe("400 HTTP error: Invalid Bearer [redacted]");
+      expect(xeroErrorDetails(error).validationMessages[0]).toHaveLength(512);
+      expect(JSON.stringify(xeroErrorDetails(error))).not.toContain("SECRET_TOKEN");
+      expect(xeroValidationMessages({ bankTransactions: [{ validationErrors: [{ message: "Invalid account" }] }] })).toEqual(["Invalid account"]);
+    });
+
+    it.each(["not JSON", "null", "[]", '{"response":{"statusCode":"400"}}', '{"response":{"statusCode":1000}}', "x".repeat(1_048_577)])("does not invent an HTTP rejection for malformed or unrecognized failures", error => {
+      expect(xeroErrorDetails(error).httpStatus).toBeUndefined();
+    });
+
+    it("uses only response fields for generic errors with an attached HTTP status", () => {
+      const error = Object.assign(new Error("SECRET_ARBITRARY_MESSAGE"), { response: { status: 400, data: { Detail: "Invalid account" } } });
+      expect(xeroErrorDetails(error)).toEqual({ httpStatus: 400, providerMessage: "400 HTTP error: Invalid account", validationMessages: [] });
+    });
+
+    it("sanitizes the Axios provider detail as well as the SDK envelope", () => {
+      expect(formatError(makeAxiosError(400, "Invalid Bearer SECRET_TOKEN"))).toBe("Invalid Bearer [redacted]");
+    });
+
     it("extracts problem.detail and title without leaking request headers", () => {
       const sdkError = {
         response: {

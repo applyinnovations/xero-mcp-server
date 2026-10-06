@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { AccountingApi, BankTransaction } from "xero-node";
+import { createServer } from "node:http";
+import { once } from "node:events";
+import type { AddressInfo } from "node:net";
 import { runWithTenantPermissions, runWithXeroClient, TenantXeroClient } from "../../clients/xero-client.js";
 import { codeXeroBankTransaction } from "../code-xero-bank-transaction.handler.js";
 import { codeBankTransaction } from "../../helpers/bank-account-coding.js";
@@ -83,11 +86,51 @@ it("returns unchanged without a POST when selected codes already match", async (
   const update = post(); expect(await invoke()).toMatchObject({ outcome: "unchanged" }); expect(update).not.toHaveBeenCalled();
 });
 
-it.each([400, 401, 403, 404, 409, 422, 429])("reports known Xero rejection %s honestly", async status => {
+it.each([400, 401, 403, 404, 405, 409, 413, 415, 422, 429])("reports known Xero rejection %s honestly", async status => {
   const update = post().mockRejectedValue({ response: { statusCode: status }, request: { headers: { authorization: "secret" } } });
   const result = await invoke();
   expect(result).toMatchObject({ outcome: "rejected", httpStatus: status, code: "write" });
   expect(JSON.stringify(result)).not.toContain("secret"); expect(update).toHaveBeenCalledTimes(1);
+});
+
+it("reports the real SDK's serialized HTTP validation rejection without retrying or leaking its envelope", async () => {
+  let requests = 0;
+  const server = createServer((request, response) => {
+    requests++;
+    expect(request.method).toBe("POST");
+    expect(request.url).toBe(`/BankTransactions/${transaction.bankTransactionID}?unitdp=4`);
+    expect(request.headers['idempotency-key']).toBe(idempotencyKey);
+    response.writeHead(400, { "content-type": "application/json", "set-cookie": "SECRET_COOKIE" });
+    response.end(JSON.stringify({ ErrorNumber: 10, Type: "ValidationException", Message: "A validation exception occurred", Elements: [
+      { Description: "PRIVATE_ECHOED_RECORD", ValidationErrors: [{ Message: "The account code is not valid for this document." }] },
+    ] }));
+  });
+  server.listen(0, "127.0.0.1"); await once(server, "listening");
+  try {
+    const sdkClient = client();
+    sdkClient.accountingApi.basePath = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    sdkClient.accountingApi.accessToken = "SECRET_BEARER_TOKEN";
+    const update = post(); // spy without replacing the installed SDK implementation
+    const result = await runWithTenantPermissions([tenantId], () => runWithXeroClient(sdkClient,
+      () => codeXeroBankTransaction(transaction.bankTransactionID!, changes, idempotencyKey)), [tenantId]);
+    expect(result).toMatchObject({ outcome: "rejected", code: "write", httpStatus: 400,
+      validationMessages: ["The account code is not valid for this document."], statementLinkageVerified: false });
+    expect(requests).toBe(1); expect(update).toHaveBeenCalledTimes(1);
+    expect(record).toEqual(transaction);
+    for (const secret of ["SECRET_BEARER_TOKEN", "SECRET_COOKIE", "PRIVATE_ECHOED_RECORD"]) expect(JSON.stringify(result)).not.toContain(secret);
+  } finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
+});
+
+it.each([408, 500, 503])("keeps serialized timeout/server status %s uncertain without retrying", async status => {
+  const update = post().mockRejectedValue(JSON.stringify({ response: { statusCode: status, request: { headers: { authorization: "SECRET" } } } }));
+  expect(await invoke()).toMatchObject({ outcome: "unknown", code: "write", httpStatus: status });
+  expect(update).toHaveBeenCalledTimes(1);
+});
+
+it("reports returned validation messages even when Xero omits the rejected record ID", async () => {
+  const update = post().mockResolvedValue({ body: { bankTransactions: [{ validationErrors: [{ message: "Account is not eligible" }] }] }, response: {} } as Awaited<ReturnType<AccountingApi["updateBankTransaction"]>>);
+  expect(await invoke()).toMatchObject({ outcome: "rejected", code: "xero-validation", validationMessages: ["Account is not eligible"] });
+  expect(update).toHaveBeenCalledTimes(1);
 });
 
 it.each(["timeout", "server", "verification", "drift", "validation"])("reports %s without retrying or claiming a successful preservation", async failure => {
