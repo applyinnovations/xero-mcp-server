@@ -6,10 +6,7 @@ import { runWithTenantPermissions, configuredTenantIds, configuredWritableTenant
 import { XeroMcpServer } from "./xero-mcp-server.js";
 import { ToolFactory } from "../tools/tool-factory.js";
 import { configuredOnboarding, XeroOnboarding, XeroOnboardingError } from "../auth/xero-onboarding.js";
-import { registerOnboardingTools } from "../tools/onboarding.js";
-
-import { canCodeBankTransactions, createBankCodingClientFactory } from "../auth/bank-coding.js";
-import { registerBankCodingTool } from "../tools/update/code-bank-transaction.tool.js";
+import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 
 function json(response: ServerResponse, status: number, body: unknown) {
   response.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store" });
@@ -29,12 +26,11 @@ async function requestBody(request: IncomingMessage): Promise<unknown> {
 
 export function createRemoteServer(config: RemoteConfig, key?: JWTVerifyGetKey, onboarding: XeroOnboarding | undefined = configuredOnboarding(config)) {
   const verify = createAccessContextVerifier(config, key);
-  const createCodingClient = config.recoding?.enabled ? createBankCodingClientFactory(config.recoding) : undefined;
   const resource = new URL(config.resource);
   const metadataPath = `/.well-known/oauth-protected-resource${resource.pathname}`;
   const metadataUrl = new URL(metadataPath, resource.origin).href;
   const hosts = new Set([resource.hostname, "127.0.0.1", "localhost"]);
-  const scopes = [config.readScope, ...(config.recoding?.enabled ? [config.recoding.scope] : []), ...(onboarding && config.connectScope ? [config.connectScope] : [])];
+  const scopes = [config.readScope, ...(onboarding && config.connectScope ? [config.connectScope] : [])];
   const challenge = `Bearer resource_metadata="${metadataUrl}", scope="${scopes.join(" ")}"`;
   const server = createServer((request, response) => {
     void (async () => {
@@ -70,7 +66,7 @@ export function createRemoteServer(config: RemoteConfig, key?: JWTVerifyGetKey, 
         const context = await verify(token);
         const permissions = context.tenantIds.filter(id => configuredTenantIds().includes(id));
         const reader = context.scopes.includes(config.readScope) && permissions.length > 0;
-        const writePermissions = reader && config.recoding && canCodeBankTransactions(config.recoding, context, config.readScope)
+        const writePermissions = reader && typeof context.clientId === "string" && context.clientId.length > 0
           ? permissions.filter(id => configuredWritableTenantIds().includes(id)) : [];
         const connector = !!onboarding && canConnectXero(config, context);
         if (!reader && !connector) throw new RemoteAuthError(403);
@@ -81,17 +77,23 @@ export function createRemoteServer(config: RemoteConfig, key?: JWTVerifyGetKey, 
         catch { json(response, 400, { error: "Invalid or oversized JSON body" }); return; }
         await runWithTenantPermissions(permissions, async () => {
           const mcp = XeroMcpServer.GetServer();
-          if (reader) ToolFactory(mcp);
-          if (writePermissions.length && createCodingClient) {
-            registerBankCodingTool(mcp, createCodingClient, context.subject);
-          }
-          if (connector && onboarding) registerOnboardingTools(mcp, onboarding, context.subject);
+          ToolFactory(mcp, {
+            access: {
+              company: reader ? writePermissions.length ? ["read", "write"] : ["read"] : [],
+              connection: connector ? ["read", "write"] : [],
+            },
+            subject: context.subject, onboarding,
+          });
           const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
           let closed = false;
           const close = () => { if (!closed) { closed = true; void mcp.close().catch(() => {}); } };
           response.once("finish", close);
           response.once("close", close);
           await mcp.connect(transport);
+          (request as IncomingMessage & { auth: AuthInfo }).auth = {
+            token, clientId: typeof context.clientId === "string" ? context.clientId : "",
+            scopes: [...context.scopes], extra: { subject: context.subject },
+          };
           await transport.handleRequest(request, response, body);
         }, writePermissions);
       } catch (error) {

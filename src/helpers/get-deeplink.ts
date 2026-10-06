@@ -21,17 +21,21 @@ export enum DeepLinkType {
 
 /**
  * Gets a deep link for a specific type and item ID.
- * This will also fetch the org short code from the Xero client.
+ * Optional enrichment: a failed or missing shortcode must not invalidate the
+ * confirmed operation result. Do not return or log SDK errors/credentials.
  * @param type
  * @param itemId
  * @returns
  */
 export const getDeepLink = async (type: DeepLinkType, itemId: string) => {
-  const orgShortCode = await xeroClient.getShortCode();
-
-  if (!orgShortCode) {
-    throw new Error("Failed to retrieve organisation short code");
+  let orgShortCode: string | undefined;
+  try {
+    orgShortCode = await xeroClient.getShortCode();
+  } catch {
+    return undefined;
   }
+
+  if (!orgShortCode) return undefined;
 
   switch (type) {
     case DeepLinkType.CONTACT:

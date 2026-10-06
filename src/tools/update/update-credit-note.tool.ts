@@ -60,6 +60,7 @@ const UpdateCreditNoteTool = CreateXeroTool({
     );
     if (result.isError) {
       return {
+        isError: true,
         content: [
           {
             type: "text" as const,

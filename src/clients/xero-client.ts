@@ -15,6 +15,7 @@ export interface XeroTokenProvider {
 interface SdkRequest { method?: string; headers?: Record<string, unknown> }
 
 export class TenantXeroClient extends XeroClient {
+  private tokens?: Promise<TokenSetParameters>;
   private authentication?: Promise<void>;
   private shortCode?: string;
 
@@ -38,13 +39,16 @@ export class TenantXeroClient extends XeroClient {
     }
   }
 
-  authenticate(): Promise<void> {
-    this.authentication ??= this.authenticateTenant();
+  async authenticate(requiredScopes: readonly string[] = []): Promise<void> {
+    const tokens = await (this.tokens ??= this.provider.getTokenSet());
+    const scopes = (tokens.scope ?? "").split(" ");
+    if (requiredScopes.some(scope => !scopes.includes(scope))) throw new Error("Xero grant lacks required OAuth consent");
+    this.authentication ??= this.authenticateTenant(tokens);
     return this.authentication;
   }
 
-  private async authenticateTenant(): Promise<void> {
-    this.setTokenSet(await this.provider.getTokenSet());
+  private async authenticateTenant(tokens: TokenSetParameters): Promise<void> {
+    this.setTokenSet(tokens);
     await this.updateTenants(false);
     if (!this.tenants.some((tenant: { tenantId: string }) => tenant.tenantId === this.tenantId)) {
       throw new Error("Selected tenant is not connected to this Xero grant");

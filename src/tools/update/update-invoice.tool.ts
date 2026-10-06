@@ -80,6 +80,7 @@ const UpdateInvoiceTool = CreateXeroTool({
     );
     if (result.isError) {
       return {
+        isError: true,
         content: [
           {
             type: "text" as const,

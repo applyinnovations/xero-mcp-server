@@ -27,6 +27,7 @@ const CreateCreditNoteTool = CreateXeroTool({
     const result = await createXeroCreditNote(contactId, lineItems, reference);
     if (result.isError) {
       return {
+        isError: true,
         content: [
           {
             type: "text" as const,

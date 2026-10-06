@@ -288,7 +288,9 @@ reads SPEND/RECEIVE only, defaults to reconciled transactions, and supports
 page. Concurrent changes can affect pagination, so it is not a snapshot export.
 `get-bank-transaction` retrieves one full SPEND/RECEIVE record by ID.
 
-Write tools are disabled by default. See [Account coding tool](#account-coding-tool)
+Writes require verified resource access, global company permission and actual
+Xero OAuth consent.
+See [Account coding tool](#account-coding-tool)
 for permissions, configuration and reconciliation-verification requirements.
 
 ## Durable OAuth refresh
@@ -360,7 +362,8 @@ The server intersects subject permissions with its tenant allowlist and the
 organisations connected to the Xero grant. An authenticated subject cannot select
 another subject's tenant. The grant is server-managed; incoming access tokens are never
 forwarded to Xero. Different POST requests get separate MCP servers and client
-contexts. Write tools remain unavailable.
+contexts. Company mutations are exposed only to verified clients with mapped
+read-write companies and remain subject to actual Xero consent and tenant guards.
 
 The internal endpoint is `/mcp`. If the public endpoint has a path prefix, the
 reverse proxy maps it to this internal path and forwards the original Host.
@@ -524,8 +527,8 @@ protected. Back up the current encrypted state and key separately.
 
 Tests use synthetic keys/tokens and mocked Xero endpoints. Real app consent,
 browser/hosted-client behavior, issued-token/scopes, all organisations and durable
-refresh/restart require live acceptance checks. Account coding is disabled by
-default and requires the action/OAuth permissions described below.
+refresh/restart require live acceptance checks. Account coding requires the
+global company and OAuth permissions described below.
 
 ### xlab CI
 
@@ -571,7 +574,8 @@ Computed totals, currency/rate read fields and `IsReconciled` are omitted from P
 Existing authorised SPEND/RECEIVE entries may be reconciled or unreconciled;
 `list-bank-transactions` with `reconciledOnly: false` includes both states. Raw
 bank-feed statement lines, GST/tax edits, line creation/deletion, payments,
-transfers and lodgements are excluded. No generic CRUD write tools are registered.
+transfers and lodgements are excluded from account coding. The original CRUD
+tools remain separate operations, governed by the same shared company permissions.
 
 The compact result includes IDs, caller's idempotency key, actor, completion time,
 selected account-code differences and outcome (`updated`, `unchanged`,
@@ -601,28 +605,45 @@ Every tool definition requires explicit `access: "read"` or `access: "write"`
 metadata. Central registration rejects missing classifications and derives MCP
 read-only hints from that field. Read invocations discard request write authority;
 company mutations require the shared write guard regardless of tool name.
-Existing create/update/delete tools remain unregistered. Owner-only OAuth onboarding manages read connectivity separately;
-it does not mutate company records or request write consent.
+`ToolCatalog` in `src/tools/index.ts` is the complete inventory used by stdio and
+HTTP. Category exports preserve all upstream tools: 11 creates, 13 updates plus
+coding, and one delete. Entrypoints register all tools permitted by the caller's
+resource and read/write access, without support classifications or feature flags.
+A company reader receives 28 reads; a company writer receives all 54 company
+tools, including the original 25 mutations and coding. Connection access is
+independent and adds up to four tools. Upstream v0.0.16 registered all CRUD tools
+over stdio; this fork's default stdio context remains read-only. Authenticated HTTP
+clients with a mapped read-write company can use the full mutation catalog,
+subject to shared tenant/caller guards and actual Xero OAuth consent.
+Every definition has a `company` or `connection` resource alongside read/write
+access. The shared company factory supplies company metadata and tenant guards;
+connection definitions use the same builder and registrar with their existing
+service and verified owner context.
 
-`XERO_RECODING_ENABLED` defaults to `false`. Enabled HTTP configuration requires
-mapped read subjects in `MCP_RECODE_SUBJECTS_JSON`, `MCP_RECODE_CLIENT_ID`, and a
-separate action scope `MCP_RECODE_SCOPE` (default `xero:code`). Only matching
-verified user/client tokens with read and coding scopes and access to a shared
-read-write company see `code-bank-transaction`. Each call rechecks company access.
-There is no separate coding tenant policy. Stdio never registers the coding tool
-or establishes request write permission.
+Connection status is read access; beginning/continuing consent and confirming
+grant persistence are connection writes. They require existing connector
+authorization and remain available before any grant or company mapping exists.
+Connection tools discard company write authority, so consent-state mutations
+cannot authorize accounting mutations. They do not request write consent.
 
-Choose an explicit approved `XERO_RECODING_GRANT_MODE=shared` or `separate`.
-Coding requires actual Xero consent for `accounting.banktransactions`; read-only
-consent and token refresh cannot add it. Shared uses the existing grant; adding
-`accounting.banktransactions` broadens that grant across all connected tenants,
-while the shared server company policy still denies all mutations for read-only
-companies. Separate uses an independently approved PKCE app/grant in
-`XERO_RECODING_TOKEN_FILE`,
-`XERO_RECODING_TOKEN_KEY_FILE`, `XERO_RECODING_CLIENT_ID`, with a distinct app ID,
-non-aliased token state (including symlinks/hard links), and only the coding tenant.
-Grant construction, consent scope and connected-tenant checks belong to the auth
-layer. Neither consent nor credentials are created by this tool.
+HTTP uses the existing issuer, audience, resource scope (`MCP_READ_SCOPE`) and
+subject-to-tenant mapping to authorize resource access. A verified client identity
+and a mapped read-write company establish request write permission; supported
+tools are selected by explicit access metadata. No separate coding role, scope,
+subject/client policy, feature switch or OAuth grant exists. The identity provider
+controls which clients receive resource access. The default stdio catalog exposes
+reads and establishes no request write permission.
+
+All operations use the normal OAuth client and durable state configured through
+`XERO_CLIENT_ID`, `XERO_TOKEN_FILE` and `XERO_TOKEN_KEY_FILE`. The shared tenant
+client checks required OAuth scopes before discovering connections or calling
+an accounting endpoint. Account coding requires actual Xero consent for
+`accounting.banktransactions`; read-only consent and token refresh cannot add it.
+The current onboarding flow requests and validates read scopes only; write consent
+needs an explicitly approved authorization change. Broadening the normal grant
+affects its connected companies, while the shared server policy still denies all
+mutations for read-only companies. Existing state format, key and client binding
+are unchanged. Neither consent nor credentials are created by this tool.
 
 Xero documents no conditional `If-Match`; optional preconditions and the local
 in-flight guard do not eliminate outside edits between GET and POST. Coordinate

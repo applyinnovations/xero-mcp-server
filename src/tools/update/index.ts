@@ -1,3 +1,4 @@
+import CodeBankTransactionTool from "./code-bank-transaction.tool.js";
 import ApprovePayrollTimesheetTool from "./approve-payroll-timesheet.tool.js";
 import RevertPayrollTimesheetTool from "./revert-payroll-timesheet.tool.js";
 import UpdateBankTransactionTool from "./update-bank-transaction.tool.js";
@@ -26,5 +27,6 @@ export const UpdateTools = [
   UpdatePayrollTimesheetLineTool,
   RevertPayrollTimesheetTool,
   UpdateTrackingCategoryTool,
-  UpdateTrackingOptionsTool
+  UpdateTrackingOptionsTool,
+  CodeBankTransactionTool
 ];

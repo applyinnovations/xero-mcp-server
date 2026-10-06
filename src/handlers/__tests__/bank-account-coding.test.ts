@@ -2,7 +2,6 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { AccountingApi, BankTransaction } from "xero-node";
 import { runWithTenantPermissions, runWithXeroClient, TenantXeroClient } from "../../clients/xero-client.js";
 import { codeXeroBankTransaction } from "../code-xero-bank-transaction.handler.js";
-import { BankCodingClientFactory } from "../../auth/bank-coding.js";
 import { codeBankTransaction } from "../../helpers/bank-account-coding.js";
 import { tenantId, transaction, accounts, changes, lineItemId } from "./bank-coding-fixtures.js";
 
@@ -10,8 +9,7 @@ const idempotencyKey = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 let record: BankTransaction;
 let chart = accounts;
 const client = () => new TenantXeroClient(tenantId, { getTokenSet: async () => ({ access_token: "synthetic" }) });
-const writer: BankCodingClientFactory = async () => client();
-const invoke = (args = changes, expected?: string, factory = writer) => runWithTenantPermissions([tenantId], () => runWithXeroClient(client(), () => codeXeroBankTransaction(transaction.bankTransactionID!, args, idempotencyKey, factory, expected)), [tenantId]);
+const invoke = (args = changes, expected?: string) => runWithTenantPermissions([tenantId], () => runWithXeroClient(client(), () => codeXeroBankTransaction(transaction.bankTransactionID!, args, idempotencyKey, expected)), [tenantId]);
 const post = () => vi.spyOn(AccountingApi.prototype, "updateBankTransaction");
 const successfulPost = () => post().mockImplementation(async (...args) => {
   record.lineItems = structuredClone(args[2].bankTransactions![0].lineItems);
@@ -110,8 +108,12 @@ it.each(["timeout", "server", "verification", "drift", "validation"])("reports %
 it("rejects overlapping local operations and releases only the I/O guard after completion", async () => {
   let release!: () => void;
   const blocked = new Promise<void>(resolve => { release = resolve; });
-  const factory = async () => { await blocked; return client(); }, update = successfulPost();
-  const running = invoke(changes, undefined, factory);
+  vi.mocked(AccountingApi.prototype.getBankTransaction).mockImplementationOnce(async () => {
+    await blocked;
+    return { body: { bankTransactions: [structuredClone(record)] }, response: {} } as Awaited<ReturnType<AccountingApi["getBankTransaction"]>>;
+  });
+  const update = successfulPost();
+  const running = invoke();
   expect(await invoke()).toMatchObject({ outcome: "not-applied", code: "busy" });
   release(); expect(await running).toMatchObject({ outcome: "updated" });
   expect(await invoke()).toMatchObject({ outcome: "unchanged" }); expect(update).toHaveBeenCalledTimes(1);
