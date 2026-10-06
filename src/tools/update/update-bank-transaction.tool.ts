@@ -17,7 +17,6 @@ const UpdateBankTransactionTool = CreateXeroTool({
   When a bank transaction is updated, a deep link to the bank transaction in Xero is returned.
   This deep link can be used to view the bank transaction in Xero directly.
   This link should be displayed to the user.`,
-  support: "upstream",
   access: "write",
   schema: {
     bankTransactionId: z.string(),
@@ -44,6 +43,7 @@ const UpdateBankTransactionTool = CreateXeroTool({
 
     if (result.isError) {
       return {
+        isError: true,
         content: [
           {
             type: "text" as const,

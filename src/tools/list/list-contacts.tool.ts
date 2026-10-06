@@ -5,7 +5,6 @@ import { z } from "zod";
 const ListContactsTool = CreateXeroTool({
   name: "list-contacts",
   description: "List all contacts in Xero. This includes Suppliers and Customers.",
-  support: "maintained",
   access: "read",
   schema: {
     page: z.number().optional().describe("Optional page number to retrieve for pagination. \

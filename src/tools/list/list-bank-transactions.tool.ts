@@ -6,7 +6,6 @@ import { xeroClient } from "../../clients/xero-client.js";
 const ListBankTransactionsTool = CreateXeroTool({
   name: "list-bank-transactions",
   description: "Read full structured SPEND/RECEIVE bank transactions. Reconciled only by default. Request successive pages until mayHaveMore is false. Reads are not a point-in-time snapshot.",
-  support: "maintained",
   access: "read",
   schema: {
     page: z.number().int().min(1).default(1),

@@ -135,9 +135,15 @@ it("selects write tools using verified access and global company policy, and req
     const client = new Client({ name: "coding-test", version: "1" });
     try {
       await client.connect(new StreamableHTTPClientTransport(endpoint.url, { requestInit: { headers: { Authorization: `Bearer ${await token(claims)}` } } }));
-      const names = (await client.listTools()).tools.map(tool => tool.name);
+      const tools = (await client.listTools()).tools;
+      const names = tools.map(tool => tool.name);
       expect(names.includes("code-bank-transaction")).toBe(allowed);
-      expect(names.filter(name => !/^(list|get)-/.test(name))).toEqual(allowed ? ["code-bank-transaction"] : []);
+      expect(tools).toHaveLength(allowed ? 54 : 28);
+      const mutations = tools.filter(tool => tool.annotations?.readOnlyHint === false).map(tool => tool.name);
+      expect(mutations).toHaveLength(allowed ? 26 : 0);
+      if (allowed) expect(mutations).toEqual(expect.arrayContaining([
+        "create-contact", "update-contact", "delete-timesheet", "approve-timesheet", "code-bank-transaction",
+      ]));
       if (allowed) {
         const args = { bankTransactionId: transaction.bankTransactionID, changes, idempotencyKey: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" };
         const denied = await client.callTool({ name: "code-bank-transaction", arguments: { tenantId: tenantB, ...args } });

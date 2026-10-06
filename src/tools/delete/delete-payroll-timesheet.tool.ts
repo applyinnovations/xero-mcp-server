@@ -8,7 +8,6 @@ import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
 const DeletePayrollTimesheetTool = CreateXeroTool({
   name: "delete-timesheet",
   description: `Delete an existing payroll timesheet in Xero by its ID.`,
-  support: "upstream",
   access: "write",
   schema: {
     timesheetID: z.string().describe("The ID of the timesheet to delete."),
@@ -19,6 +18,7 @@ const DeletePayrollTimesheetTool = CreateXeroTool({
 
     if (response.isError) {
       return {
+        isError: true,
         content: [
           {
             type: "text" as const,

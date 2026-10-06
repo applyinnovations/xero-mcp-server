@@ -7,6 +7,9 @@ import { updateXeroTrackingOption } from "../../handlers/update-xero-tracking-op
 import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
 import type { ToolDefinition } from "../../types/tool-definition.js";
 import type { ZodRawShapeCompat } from "@modelcontextprotocol/sdk/server/zod-compat.js";
+import { z } from "zod";
+import { ToolCatalog } from "../../tools/index.js";
+import { AccountingApi } from "xero-node/dist/gen/api/accountingApi.js";
 
 const writable = "11111111-1111-4111-8111-111111111111";
 const readOnly = ["77777777-7777-4777-8777-777777777777", "88888888-8888-4888-8888-888888888888"];
@@ -110,7 +113,71 @@ it("declares every existing create/update/delete tool as a shared-policy mutatio
         const result = await request(() => tool.handler({ tenantId }, {} as never), all);
         expect(result, tool.name).toMatchObject({ isError: true, content: [{ text: expect.stringContaining("read-only") }] });
       }
+      const untrusted = await request(() => tool.handler({ tenantId: writable }, {} as never), []);
+      expect(untrusted, tool.name).toMatchObject({ isError: true, content: [{ text: expect.stringContaining("request write permission") }] });
     }
+  }
+  expect(received).toEqual([]);
+});
+
+it("reports every company mutation's authentication failure as an MCP error without credentials", async () => {
+  vi.stubEnv("XERO_CLIENT_BEARER_TOKEN", "synthetic-fixture");
+  const secret = "synthetic-request-credential-never-return";
+  const denied = vi.spyOn(TenantXeroClient.prototype, "authenticate").mockRejectedValue({
+    response: { statusCode: 403 }, request: { headers: { authorization: secret } },
+  });
+  const input = {
+    tenantId: writable, name: "Fixture", code: "FIXTURE", narration: "Fixture", amount: 1,
+    bankAccountId: writable, accountId: writable, contactId: writable, invoiceId: writable,
+    creditNoteId: writable, bankTransactionId: writable, itemId: writable, quoteId: writable,
+    manualJournalID: writable, trackingCategoryId: writable, timesheetID: writable,
+    timesheetLineID: writable, payrollCalendarID: writable, employeeID: writable,
+    date: "2026-10-06", startDate: "2026-10-06", endDate: "2026-10-06",
+    lineItems: [{ description: "Fixture", quantity: 1, unitAmount: 1, accountCode: "400", taxType: "NONE" }],
+    manualJournalLines: [{ lineAmount: 1, accountCode: "400" }],
+    timesheetLine: { earningsRateID: writable, numberOfUnits: 1, date: "2026-10-06" },
+    optionNames: ["Fixture"], options: [{ trackingOptionId: writable, name: "Fixture" }],
+    idempotencyKey: writable, changes: [{ lineItemId: writable, accountCode: "400" }],
+  };
+  let checked = 0;
+  for (const create of ToolCatalog) {
+    const tool = create();
+    if (tool.resource !== "company" || tool.access !== "write") continue;
+    denied.mockClear();
+    const args = z.object(tool.schema).parse({ ...input, type: tool.name === "create-invoice" ? "ACCREC" : "SPEND" });
+    const result = await request(() => tool.handler(args, {} as never));
+    expect(denied, tool.name).toHaveBeenCalledTimes(1);
+    expect(result, tool.name).toMatchObject({ isError: true });
+    expect(JSON.stringify(result), tool.name).not.toContain(secret);
+    checked++;
+  }
+  expect(checked).toBe(26);
+  expect(received).toEqual([]);
+});
+
+it("keeps credentials out of inherited mutation result-link failures", async () => {
+  vi.stubEnv("XERO_CLIENT_BEARER_TOKEN", "synthetic-fixture");
+  vi.spyOn(TenantXeroClient.prototype, "authenticate").mockResolvedValue(undefined);
+  const secret = "synthetic-post-write-credential-never-return";
+  const link = vi.spyOn(TenantXeroClient.prototype, "getShortCode").mockRejectedValue({
+    response: { statusCode: 403 }, request: { headers: { authorization: secret } },
+  });
+  const contact = { body: { contacts: [{ contactID: writable, name: "Fixture" }] }, response: {} };
+  const journal = { body: { manualJournals: [{ manualJournalID: writable, narration: "Fixture" }] }, response: {} };
+  vi.spyOn(AccountingApi.prototype, "createContacts").mockResolvedValue(contact as Awaited<ReturnType<AccountingApi["createContacts"]>>);
+  vi.spyOn(AccountingApi.prototype, "updateContact").mockResolvedValue(contact as Awaited<ReturnType<AccountingApi["updateContact"]>>);
+  vi.spyOn(AccountingApi.prototype, "createManualJournals").mockResolvedValue(journal as Awaited<ReturnType<AccountingApi["createManualJournals"]>>);
+  vi.spyOn(AccountingApi.prototype, "updateManualJournal").mockResolvedValue(journal as Awaited<ReturnType<AccountingApi["updateManualJournal"]>>);
+  for (const name of ["create-contact", "update-contact", "create-manual-journal", "update-manual-journal"]) {
+    const tool = ToolCatalog.map(create => create()).find(tool => tool.name === name)!;
+    link.mockClear();
+    const result = await request(() => tool.handler({
+      tenantId: writable, name: "Fixture", contactId: writable, narration: "Fixture",
+      manualJournalID: writable, manualJournalLines: [{ lineAmount: 1, accountCode: "400" }],
+    }, {} as never));
+    expect(link, name).toHaveBeenCalledTimes(1);
+    expect(result, name).toMatchObject({ isError: true, content: [{ text: expect.stringContaining("permission") }] });
+    expect(JSON.stringify(result), name).not.toContain(secret);
   }
   expect(received).toEqual([]);
 });
@@ -120,7 +187,7 @@ it("prevents a declared read tool from mutating even when its caller has write p
   vi.stubEnv("XERO_CLIENT_BEARER_TOKEN", "synthetic-fixture");
   const selected = client(writable);
   const tool = CreateXeroTool({
-    name: "arbitrary-name", description: "Read contract", support: "maintained", access: "read", schema: {},
+    name: "arbitrary-name", description: "Read contract", access: "read", schema: {},
     handler: async () => {
       await selected.accountingApi.createAccount(writable, {});
       return { content: [] };

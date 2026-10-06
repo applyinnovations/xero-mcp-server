@@ -4,7 +4,6 @@ import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
 const ListTaxRatesTool = CreateXeroTool({
   name: "list-tax-rates",
   description: "Lists all tax rates in Xero. Use this tool to get the tax rates to be used when creating invoices in Xero",
-  support: "maintained",
   access: "read",
   schema: {},
   handler: async () => {

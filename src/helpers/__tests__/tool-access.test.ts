@@ -17,7 +17,7 @@ it("rejects missing or invalid access metadata before creating or registering a 
   const server = new McpServer({ name: "classification-fixture", version: "1" });
   const registered = vi.spyOn(server, "registerTool");
   for (const access of [undefined, "", "admin"]) {
-    const tool = { name: "unclassified", description: "Fixture", resource: "company", support: "maintained", schema: {}, access, handler: async () => ({ content: [] }) } as unknown as ToolDefinition<ZodRawShapeCompat>;
+    const tool = { name: "unclassified", description: "Fixture", resource: "company", schema: {}, access, handler: async () => ({ content: [] }) } as unknown as ToolDefinition<ZodRawShapeCompat>;
     expect(() => CreateTool(() => tool)()).toThrow("explicitly declared");
     expect(() => CreateXeroTool(tool)()).toThrow("explicitly declared");
     expect(() => RegisterTool(server, tool)).toThrow("explicitly declared");
@@ -29,7 +29,7 @@ it("rejects missing or invalid resource metadata without guessing an authorizati
   const server = new McpServer({ name: "resource-fixture", version: "1" });
   const registered = vi.spyOn(server, "registerTool");
   for (const resource of [undefined, "", "other"]) {
-    const tool = { name: "unclassified", description: "Fixture", resource, support: "maintained", schema: {}, access: "read", handler: async () => ({ content: [] }) } as unknown as ToolDefinition<ZodRawShapeCompat>;
+    const tool = { name: "unclassified", description: "Fixture", resource, schema: {}, access: "read", handler: async () => ({ content: [] }) } as unknown as ToolDefinition<ZodRawShapeCompat>;
     expect(() => CreateTool(() => tool)()).toThrow("explicitly declared");
     expect(() => RegisterTool(server, tool)).toThrow("explicitly declared");
   }
@@ -39,8 +39,8 @@ it("rejects missing or invalid resource metadata without guessing an authorizati
 it("derives MCP hints from explicit mutation access independently of names and resources", () => {
   const server = new McpServer({ name: "hint-fixture", version: "1" });
   const registered = vi.spyOn(server, "registerTool");
-  RegisterTool(server, { name: "create-read-fixture", description: "Fixture", resource: "company", support: "maintained", access: "read", schema: {}, handler: async () => ({ content: [] }) });
-  RegisterTool(server, { name: "get-write-fixture", description: "Fixture", resource: "connection", support: "maintained", access: "write", schema: {}, annotations: { destructiveHint: false }, handler: async () => ({ content: [] }) });
+  RegisterTool(server, { name: "create-read-fixture", description: "Fixture", resource: "company", access: "read", schema: {}, handler: async () => ({ content: [] }) });
+  RegisterTool(server, { name: "get-write-fixture", description: "Fixture", resource: "connection", access: "write", schema: {}, annotations: { destructiveHint: false }, handler: async () => ({ content: [] }) });
   expect(registered.mock.calls.map(([, metadata]) => metadata.annotations)).toEqual([
     { readOnlyHint: true }, { readOnlyHint: false, destructiveHint: false },
   ]);
@@ -62,17 +62,7 @@ it("preserves the original CRUD category inventory alongside the added update", 
   expect(DeleteTools.map(create => create().name)).toEqual(["delete-timesheet"]);
 });
 
-it("requires explicit support metadata without inferring it from tool names or access", () => {
-  const server = new McpServer({ name: "support-fixture", version: "1" });
-  for (const support of [undefined, "", "other"]) {
-    const tool = { name: "unclassified", description: "Fixture", resource: "company", access: "read", support, schema: {}, handler: async () => ({ content: [] }) } as unknown as ToolDefinition<ZodRawShapeCompat>;
-    expect(() => CreateTool(() => tool)()).toThrow("explicitly declared");
-    expect(() => CreateXeroTool(tool)()).toThrow("explicitly declared");
-    expect(() => RegisterTool(server, tool)).toThrow("explicitly declared");
-  }
-});
-
-it("retains every tool in the complete catalog and registers maintained tools once", () => {
+it("registers every tool in the complete catalog once for full resource access", () => {
   const context: ToolContext = { access: { company: ["read", "write"], connection: ["read", "write"] } };
   const definitions = ToolCatalog.map(create => create(context));
   const server = new McpServer({ name: "catalog-fixture", version: "1" });
@@ -80,9 +70,8 @@ it("retains every tool in the complete catalog and registers maintained tools on
   ToolFactory(server, context);
   expect(definitions).toHaveLength(58);
   expect(new Set(definitions.map(tool => tool.name)).size).toBe(58);
-  expect(definitions.filter(tool => tool.support === "upstream")).toHaveLength(25);
-  expect(registered).toHaveBeenCalledTimes(33);
-  expect(new Set(registered.mock.calls.map(([name]) => name)).size).toBe(33);
+  expect(registered).toHaveBeenCalledTimes(58);
+  expect(new Set(registered.mock.calls.map(([name]) => name)).size).toBe(58);
   for (const [name, metadata] of registered.mock.calls) {
     const definition = definitions.find(tool => tool.name === name)!;
     expect(metadata.annotations?.readOnlyHint).toBe(definition.access === "read");
@@ -98,7 +87,7 @@ it("keeps connection mutations independent of company write authority", async ()
     const registered = vi.spyOn(server, "registerTool");
     let connectionState = 0;
     RegisterTool(server, {
-      name: "write-fixture", resource: "connection", support: "maintained", access: "write", description: "Fixture", schema: {},
+      name: "write-fixture", resource: "connection", access: "write", description: "Fixture", schema: {},
       handler: async () => { connectionState++; assertTenantWriteAccess(tenant); return { content: [] }; },
     });
     const invoke = registered.mock.calls[0][2] as ToolCallback<ZodRawShapeCompat>;
@@ -110,15 +99,17 @@ it("keeps connection mutations independent of company write authority", async ()
   } finally { vi.unstubAllEnvs(); }
 });
 
-// Observed exposed counts before consolidation, independent of catalog selection logic.
+// Independent catalog contract: 28 company reads, 26 company writes, 4 connection tools.
 it.each([
   { access: { company: [], connection: [] }, total: 0, reads: 0 },
+  { access: { company: ["write"], connection: [] }, total: 26, reads: 0 },
+  { access: { company: ["read", "write"], connection: ["read", "write"] }, total: 58, reads: 29 },
   { access: { company: ["read"], connection: [] }, total: 28, reads: 28 },
-  { access: { company: ["read", "write"], connection: [] }, total: 29, reads: 28 },
+  { access: { company: ["read", "write"], connection: [] }, total: 54, reads: 28 },
   { access: { company: [], connection: ["read", "write"] }, total: 4, reads: 1 },
   { access: { company: ["read"], connection: ["read", "write"] }, total: 32, reads: 29 },
-  { access: { company: ["read", "write"], connection: ["read"] }, total: 30, reads: 29 },
-] as { access: ToolContext["access"]; total: number; reads: number }[])("preserves exposed tool scope and mutation hints for %j", ({ access, total, reads }) => {
+  { access: { company: ["read", "write"], connection: ["read"] }, total: 55, reads: 29 },
+] as { access: ToolContext["access"]; total: number; reads: number }[])("exposes the full permitted resource/access catalog with correct mutation hints for %j", ({ access, total, reads }) => {
   const server = new McpServer({ name: "selection-fixture", version: "1" });
   const registered = vi.spyOn(server, "registerTool");
   ToolFactory(server, { access });

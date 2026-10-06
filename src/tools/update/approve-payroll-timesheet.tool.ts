@@ -8,7 +8,6 @@ import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
 const ApprovePayrollTimesheetTool = CreateXeroTool({
   name: "approve-timesheet",
   description: `Approve a payroll timesheet in Xero by its ID.`,
-  support: "upstream",
   access: "write",
   schema: {
     timesheetID: z.string().describe("The ID of the timesheet to approve."),
@@ -19,6 +18,7 @@ const ApprovePayrollTimesheetTool = CreateXeroTool({
 
     if (response.isError) {
       return {
+        isError: true,
         content: [
           {
             type: "text" as const,

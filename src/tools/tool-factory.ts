@@ -6,6 +6,6 @@ import { ToolCatalog } from "./index.js";
 export function ToolFactory(server: McpServer, context: ToolContext = { access: { company: ["read"], connection: [] } }) {
   for (const createTool of ToolCatalog) {
     const tool = createTool(context);
-    if (tool.support === "maintained" && context.access[tool.resource].includes(tool.access)) RegisterTool(server, tool);
+    if (context.access[tool.resource].includes(tool.access)) RegisterTool(server, tool);
   }
 }

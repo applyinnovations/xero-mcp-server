@@ -6,7 +6,7 @@ import { EmployeeLeave } from "../../types/payroll-nz-types.js";
 const ListPayrollEmployeeLeaveTool = CreateXeroTool({
   name: "list-payroll-employee-leave",
   description: "List all leave records for a specific employee in Xero. This shows all leave transactions including approved, pending, and processed time off. Provide an employee ID to see their leave history.",
-  support: "maintained", access: "read",
+  access: "read",
   schema: {
     employeeId: z.string().describe("The Xero employee ID to fetch leave records for"),
   },

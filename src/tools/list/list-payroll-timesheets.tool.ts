@@ -9,7 +9,6 @@ const ListPayrollTimesheetsTool = CreateXeroTool({
   name: "list-timesheets",
   description: `List all payroll timesheets in Xero.
 This retrieves comprehensive timesheet details including timesheet IDs, employee IDs, start and end dates, total hours, and the last updated date.`,
-  support: "maintained",
   access: "read",
   schema: {},
   handler: async () => {

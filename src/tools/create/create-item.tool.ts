@@ -17,7 +17,7 @@ const salesDetailsSchema = z.object({
 const CreateItemTool = CreateXeroTool({
   name: "create-item",
   description: "Create an item in Xero.",
-  support: "upstream", access: "write",
+  access: "write",
   schema: {
     code: z.string(),
     name: z.string(),
@@ -51,6 +51,7 @@ const CreateItemTool = CreateXeroTool({
 
     if (result.isError) {
       return {
+        isError: true,
         content: [
           {
             type: "text" as const,

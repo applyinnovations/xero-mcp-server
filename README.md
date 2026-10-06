@@ -362,7 +362,8 @@ The server intersects subject permissions with its tenant allowlist and the
 organisations connected to the Xero grant. An authenticated subject cannot select
 another subject's tenant. The grant is server-managed; incoming access tokens are never
 forwarded to Xero. Different POST requests get separate MCP servers and client
-contexts. Write tools remain unavailable.
+contexts. Company mutations are exposed only to verified clients with mapped
+read-write companies and remain subject to actual Xero consent and tenant guards.
 
 The internal endpoint is `/mcp`. If the public endpoint has a path prefix, the
 reverse proxy maps it to this internal path and forwards the original Host.
@@ -573,7 +574,8 @@ Computed totals, currency/rate read fields and `IsReconciled` are omitted from P
 Existing authorised SPEND/RECEIVE entries may be reconciled or unreconciled;
 `list-bank-transactions` with `reconciledOnly: false` includes both states. Raw
 bank-feed statement lines, GST/tax edits, line creation/deletion, payments,
-transfers and lodgements are excluded. No generic CRUD write tools are registered.
+transfers and lodgements are excluded from account coding. The original CRUD
+tools remain separate operations, governed by the same shared company permissions.
 
 The compact result includes IDs, caller's idempotency key, actor, completion time,
 selected account-code differences and outcome (`updated`, `unchanged`,
@@ -605,14 +607,14 @@ read-only hints from that field. Read invocations discard request write authorit
 company mutations require the shared write guard regardless of tool name.
 `ToolCatalog` in `src/tools/index.ts` is the complete inventory used by stdio and
 HTTP. Category exports preserve all upstream tools: 11 creates, 13 updates plus
-coding, and one delete. Every definition declares static `support: "maintained"`
-or `support: "upstream"` metadata, independently of its resource and access.
-Entrypoints register maintained tools permitted by the caller's resource access;
-retained upstream implementations remain available in the inventory, with shared
-tenant guards, but are not registered by either transport. This preserves the
-fork's exposure without adding runtime flags or treating a category as an allowlist.
-Upstream v0.0.16 registered all CRUD tools over stdio; the fork restricted both
-transports to reads in its tenant-selection change before adding coding.
+coding, and one delete. Entrypoints register all tools permitted by the caller's
+resource and read/write access, without support classifications or feature flags.
+A company reader receives 28 reads; a company writer receives all 54 company
+tools, including the original 25 mutations and coding. Connection access is
+independent and adds up to four tools. Upstream v0.0.16 registered all CRUD tools
+over stdio; this fork's default stdio context remains read-only. Authenticated HTTP
+clients with a mapped read-write company can use the full mutation catalog,
+subject to shared tenant/caller guards and actual Xero OAuth consent.
 Every definition has a `company` or `connection` resource alongside read/write
 access. The shared company factory supplies company metadata and tenant guards;
 connection definitions use the same builder and registrar with their existing

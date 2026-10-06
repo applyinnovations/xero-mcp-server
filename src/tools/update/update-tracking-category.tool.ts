@@ -5,7 +5,6 @@ import { updateXeroTrackingCategory } from "../../handlers/update-xero-tracking-
 const UpdateTrackingCategoryTool = CreateXeroTool({
   name: "update-tracking-category",
   description: `Updates an existing tracking category in Xero.`,
-  support: "upstream",
   access: "write",
   schema: {
     trackingCategoryId: z.string(),
@@ -17,6 +16,7 @@ const UpdateTrackingCategoryTool = CreateXeroTool({
 
     if (response.isError) {
       return {
+        isError: true,
         content: [
           {
             type: "text" as const,

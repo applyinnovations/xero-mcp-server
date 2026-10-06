@@ -10,7 +10,7 @@ const CreatePayrollTimesheetTool = CreateXeroTool({
   name: "create-timesheet",
   description: `Create a new payroll timesheet in Xero.
 This allows you to specify details such as the employee ID, payroll calendar ID, start and end dates, and timesheet lines.`,
-  support: "upstream", access: "write",
+  access: "write",
   schema: {
     payrollCalendarID: z.string().describe("The ID of the payroll calendar."),
     employeeID: z.string().describe("The ID of the employee."),
@@ -32,6 +32,7 @@ This allows you to specify details such as the employee ID, payroll calendar ID,
 
     if (response.isError) {
       return {
+        isError: true,
         content: [
           {
             type: "text" as const,

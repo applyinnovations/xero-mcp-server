@@ -11,7 +11,6 @@ Can optionally pass in manual journal ID to retrieve a specific journal, or a da
 The response presents a complete overview of all manual journals currently registered in your Xero account, with their details. 
 Ask the user if they want the next page of manual journals after running this tool if 10 manual journals are returned.
 If they want the next page, call this tool again with the next page number, modified date, and the manual journal ID if one was provided in the previous call.`,
-  support: "maintained",
   access: "read",
   schema: {
     manualJournalId: z

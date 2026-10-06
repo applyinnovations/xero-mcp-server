@@ -6,7 +6,6 @@ import { formatTrackingOption } from "../../helpers/format-tracking-option.js";
 const ListTrackingCategoriesTool = CreateXeroTool({
   name: "list-tracking-categories",
   description: "List all tracking categories in Xero, along with their associated tracking options.",
-  support: "maintained",
   access: "read",
   schema: {
     includeArchived: z.boolean().optional()

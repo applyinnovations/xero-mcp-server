@@ -5,7 +5,6 @@ import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
 const ListOrganisationDetailsTool = CreateXeroTool({
   name: "list-organisation-details",
   description: "Lists the organisation details from Xero. Use this tool to get information about the current Xero organisation.",
-  support: "maintained",
   access: "read",
   schema: {},
   handler: async () => {

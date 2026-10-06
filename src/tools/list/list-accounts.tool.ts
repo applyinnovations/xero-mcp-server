@@ -4,7 +4,6 @@ import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
 const ListAccountsTool = CreateXeroTool({
   name: "list-accounts",
   description: "Lists all accounts in Xero. Use this tool to get the account codes and names to be used when creating invoices in Xero",
-  support: "maintained",
   access: "read",
   schema: {},
   handler: async () => {

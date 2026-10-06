@@ -17,7 +17,7 @@ const CreateQuoteTool = CreateXeroTool({
  When a quote is created, a deep link to the quote in Xero is returned. \
  This deep link can be used to view the quote in Xero directly. \
  This link should be displayed to the user.",
-  support: "upstream", access: "write",
+  access: "write",
   schema: {
     contactId: z.string(),
     lineItems: z.array(lineItemSchema),
@@ -47,6 +47,7 @@ const CreateQuoteTool = CreateXeroTool({
     );
     if (result.isError) {
       return {
+        isError: true,
         content: [
           {
             type: "text" as const,

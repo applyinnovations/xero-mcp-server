@@ -14,7 +14,7 @@ const CreatePaymentTool = CreateXeroTool({
  When a payment is created, a deep link to the payment in Xero is returned. \
  This deep link can be used to view the payment in Xero directly. \
  This link should be displayed to the user.",
-  support: "upstream", access: "write",
+  access: "write",
   schema: {
     invoiceId: z.string().describe("The ID of the invoice to pay"),
     accountId: z
@@ -43,6 +43,7 @@ const CreatePaymentTool = CreateXeroTool({
     });
     if (result.isError) {
       return {
+        isError: true,
         content: [
           {
             type: "text" as const,

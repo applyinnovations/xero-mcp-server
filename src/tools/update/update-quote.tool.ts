@@ -19,7 +19,6 @@ const UpdateQuoteTool = CreateXeroTool({
  When a quote is updated, a deep link to the quote in Xero is returned. \
  This deep link can be used to view the quote in Xero directly. \
  This link should be displayed to the user.",
-  support: "upstream",
   access: "write",
   schema: {
     quoteId: z.string(),
@@ -64,6 +63,7 @@ const UpdateQuoteTool = CreateXeroTool({
     );
     if (result.isError) {
       return {
+        isError: true,
         content: [
           {
             type: "text" as const,

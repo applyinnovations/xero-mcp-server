@@ -19,7 +19,6 @@ const UpdateCreditNoteTool = CreateXeroTool({
  When a credit note is updated, a deep link to the credit note in Xero is returned.\
  This deep link can be used to view the credit note in Xero directly.\
  This link should be displayed to the user.",
-  support: "upstream",
   access: "write",
   schema: {
     creditNoteId: z.string(),
@@ -61,6 +60,7 @@ const UpdateCreditNoteTool = CreateXeroTool({
     );
     if (result.isError) {
       return {
+        isError: true,
         content: [
           {
             type: "text" as const,

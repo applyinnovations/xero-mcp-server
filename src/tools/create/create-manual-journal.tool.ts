@@ -2,7 +2,7 @@ import { z } from "zod";
 import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
 import { createXeroManualJournal } from "../../handlers/create-xero-manual-journal.handler.js";
 import { DeepLinkType, getDeepLink } from "../../helpers/get-deeplink.js";
-import { ensureError } from "../../helpers/ensure-error.js";
+import { formatError } from "../../helpers/format-error.js";
 import { LineAmountTypes, ManualJournal } from "xero-node";
 
 const CreateManualJournalTool = CreateXeroTool({
@@ -12,7 +12,7 @@ const CreateManualJournalTool = CreateXeroTool({
   Journal lines must contain at least two individual journal lines with account codes, \
   use basic accounting account types pairing when not specified, \
   and make sure journal line pairs have credit and debit balanced.",
-  support: "upstream", access: "write",
+  access: "write",
   schema: {
     narration: z
       .string()
@@ -78,6 +78,7 @@ const CreateManualJournalTool = CreateXeroTool({
 
       if (response.isError) {
         return {
+          isError: true,
           content: [
             {
               type: "text" as const,
@@ -134,13 +135,14 @@ const CreateManualJournalTool = CreateXeroTool({
         ],
       };
     } catch (error) {
-      const err = ensureError(error);
+      const errorMessage = formatError(error);
 
       return {
+        isError: true,
         content: [
           {
             type: "text" as const,
-            text: `Error creating manual journal: ${err.message}`,
+            text: `Error creating manual journal: ${errorMessage}`,
           },
         ],
       };

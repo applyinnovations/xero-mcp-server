@@ -6,7 +6,6 @@ import { getClientHeaders } from "../../helpers/get-client-headers.js";
 export default CreateXeroTool({
   name: "get-bank-transaction",
   description: "Read one full SPEND/RECEIVE bank transaction by its ID, including line IDs, tracking, tax, totals and reconciliation status.",
-  support: "maintained",
   access: "read",
   schema: { bankTransactionId: z.string().uuid() },
   handler: async ({ bankTransactionId }) => {

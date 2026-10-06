@@ -8,8 +8,6 @@ import {
 
 export type ToolAccess = "read" | "write";
 export type ToolResource = "company" | "connection";
-// Static maintenance status, independent of caller permissions and OAuth consent.
-export type ToolSupport = "maintained" | "upstream";
 
 export interface ToolContext {
   access: Readonly<Record<ToolResource, readonly ToolAccess[]>>;
@@ -29,18 +27,12 @@ export function validateToolAccess(access: unknown): ToolAccess {
   return access;
 }
 
-export function validateToolSupport(support: unknown): ToolSupport {
-  if (support !== "maintained" && support !== "upstream") throw new Error("Tool support must be explicitly declared as maintained or upstream");
-  return support;
-}
-
 export interface ToolDefinition<
   Args extends undefined | ZodRawShapeCompat | AnySchema = undefined,
 > {
   name: string;
   access: ToolAccess;
   resource: ToolResource;
-  support: ToolSupport;
   annotations?: Omit<ToolAnnotations, "readOnlyHint">;
   description: string;
   schema: Args;

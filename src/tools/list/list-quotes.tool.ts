@@ -8,7 +8,6 @@ const ListQuotesTool = CreateXeroTool({
   Ask the user if they want to see quotes for a specific contact before running. 
   Ask the user if they want the next page of quotes after running this tool if 10 quotes are returned. 
   If they do, call this tool again with the page number and the contact provided in the previous call.`,
-  support: "maintained",
   access: "read",
   schema: {
     page: z.number(),

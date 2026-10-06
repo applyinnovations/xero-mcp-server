@@ -6,7 +6,6 @@ import { EmployeeLeaveBalance } from "../../types/payroll-nz-types.js";
 const ListPayrollEmployeeLeaveBalancesTool = CreateXeroTool({
   name: "list-payroll-employee-leave-balances",
   description: "List all leave balances for a specific employee in Xero. This shows current leave balances for all leave types available to the employee, including annual, sick, and other leave types.",
-  support: "maintained",
   access: "read",
   schema: {
     employeeId: z.string().describe("The Xero employee ID to fetch leave balances for"),
