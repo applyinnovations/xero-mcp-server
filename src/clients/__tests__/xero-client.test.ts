@@ -35,4 +35,27 @@ describe("tenant context", () => {
     vi.stubEnv("XERO_ALLOWED_TENANT_IDS", tenantA);
     expect(() => createTenantClient(tenantB)).toThrow("not allowed");
   });
+
+  it("checks required OAuth scopes before connection discovery and rechecks cached authentication", async () => {
+    const discover = vi.spyOn(XeroClient.prototype, "updateTenants").mockImplementation(async function () {
+      Object.defineProperty(this, "tenants", { value: [{ tenantId: tenantA }] });
+      return this.tenants;
+    });
+    for (const scope of [undefined, "accounting.banktransactions.read"]) {
+      const getTokenSet = vi.fn(async () => ({ access_token: "synthetic", scope }));
+      const selected = new TenantXeroClient(tenantA, { getTokenSet });
+      await expect(selected.authenticate(["accounting.banktransactions"])).rejects.toThrow("consent");
+      expect(discover).not.toHaveBeenCalled();
+      await selected.authenticate();
+      await expect(selected.authenticate(["accounting.banktransactions"])).rejects.toThrow("consent");
+      expect(getTokenSet).toHaveBeenCalledTimes(1);
+      expect(discover).toHaveBeenCalledTimes(1);
+      discover.mockClear();
+    }
+    const selected = new TenantXeroClient(tenantA, { getTokenSet: async () => ({ access_token: "synthetic", scope: "accounting.banktransactions accounting.settings.read" }) });
+    await selected.authenticate(["accounting.banktransactions"]);
+    await selected.authenticate(["accounting.settings.read"]);
+    await expect(selected.authenticate(["payroll.payruns"])).rejects.toThrow("consent");
+    expect(discover).toHaveBeenCalledTimes(1);
+  });
 });

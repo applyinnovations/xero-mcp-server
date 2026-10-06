@@ -101,7 +101,7 @@ it("declares every existing create/update/delete tool as a shared-policy mutatio
   for (const directory of ["create", "update", "delete"]) {
     const base = new URL(`../../tools/${directory}/`, import.meta.url);
     for (const name of await readdir(base)) {
-      if (!name.endsWith(".ts") || name === "code-bank-transaction.tool.ts") continue;
+      if (!name.endsWith(".ts")) continue;
       const module = await import(new URL(name, base).href) as { default?: () => ToolDefinition<ZodRawShapeCompat> };
       if (!module.default) continue;
       const tool = module.default();

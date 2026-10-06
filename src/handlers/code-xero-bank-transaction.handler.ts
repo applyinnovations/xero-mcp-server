@@ -1,6 +1,5 @@
 import { BankTransaction } from "xero-node";
 import { assertTenantWriteAccess, xeroClient } from "../clients/xero-client.js";
-import { BankCodingClientFactory } from "../auth/bank-coding.js";
 import { bankCodingMatches, bankCodingPayload, BankCodingChanges, codeBankTransaction } from "../helpers/bank-account-coding.js";
 import { getClientHeaders } from "../helpers/get-client-headers.js";
 
@@ -16,18 +15,18 @@ function httpStatus(error: unknown): number | undefined {
 }
 
 export async function codeXeroBankTransaction(bankTransactionId: string, changes: BankCodingChanges,
-  idempotencyKey: string, createWriter: BankCodingClientFactory, expectedUpdatedDateUTC?: string) {
+  idempotencyKey: string, expectedUpdatedDateUTC?: string) {
   const tenantId = xeroClient.tenantId, key = `${tenantId}:${bankTransactionId}`;
   const receipt = { tenantId, bankTransactionId, idempotencyKey, statementLinkageVerified: false };
   const done = (outcome: string, details: Record<string, unknown> = {}) => ({ ...receipt, outcome, completedAt: new Date().toISOString(), ...details });
   if (inFlight.has(key)) return done("not-applied", { code: "busy", message: "Another coding request for this transaction is running" });
   inFlight.add(key);
-  let submitted = false, code = "grant";
+  let submitted = false, code = "authorization";
   try {
     assertTenantWriteAccess(tenantId);
-    const writer = await createWriter(tenantId);
+    code = "scope";
+    await xeroClient.authenticate(["accounting.banktransactions"]);
     code = "read";
-    await xeroClient.authenticate();
     const [records, chart] = await Promise.all([
       xeroClient.accountingApi.getBankTransaction(tenantId, bankTransactionId, 4, getClientHeaders()),
       xeroClient.accountingApi.getAccounts(tenantId, undefined, undefined, undefined, getClientHeaders()),
@@ -41,7 +40,7 @@ export async function codeXeroBankTransaction(bankTransactionId: string, changes
     const coded = codeBankTransaction(before, changes, chart.body.accounts ?? []);
     if (!coded.changed) return done("unchanged", { changes: coded.changes, message: "Selected lines already have the requested account codes" });
     code = "write"; submitted = true;
-    const response = await writer.accountingApi.updateBankTransaction(tenantId, bankTransactionId, { bankTransactions: [bankCodingPayload(coded.transaction)] }, 4, idempotencyKey, getClientHeaders());
+    const response = await xeroClient.accountingApi.updateBankTransaction(tenantId, bankTransactionId, { bankTransactions: [bankCodingPayload(coded.transaction)] }, 4, idempotencyKey, getClientHeaders());
     const returned = response.body.bankTransactions?.[0];
     if (!returned || returned.bankTransactionID !== bankTransactionId) return done("unknown", { code: "update-response", message: "Update outcome is uncertain; inspect the transaction and statement match before retrying" });
     if (returned?.validationErrors?.length) return done("rejected", { code: "xero-validation", message: "Xero rejected the account coding; inspect account eligibility and the transaction" });

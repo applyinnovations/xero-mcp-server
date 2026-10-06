@@ -10,7 +10,7 @@ import { ListTools } from "../../tools/list/index.js";
 import { CreateTools } from "../../tools/create/index.js";
 import { UpdateTools } from "../../tools/update/index.js";
 import { DeleteTools } from "../../tools/delete/index.js";
-import { registerBankCodingTool } from "../../tools/update/code-bank-transaction.tool.js";
+import CodeBankTransactionTool from "../../tools/update/code-bank-transaction.tool.js";
 import { registerOnboardingTools } from "../../tools/onboarding.js";
 import type { XeroOnboarding } from "../../auth/xero-onboarding.js";
 
@@ -37,11 +37,10 @@ it("derives MCP hints from explicit access, independently of the tool's name", (
 
 it("covers every existing company tool and all registered connection tools with explicit access", () => {
   for (const factory of [...GetTools, ...ListTools]) expect(factory().access).toBe("read");
-  for (const factory of [...CreateTools, ...UpdateTools, ...DeleteTools]) expect(factory().access).toBe("write");
+  for (const factory of [...CreateTools, ...UpdateTools, ...DeleteTools, CodeBankTransactionTool]) expect(factory().access).toBe("write");
   const server = new McpServer({ name: "registry-fixture", version: "1" });
   const registered = vi.spyOn(server, "registerTool");
-  ToolFactory(server);
-  registerBankCodingTool(server, async () => { throw new Error("Fixture writer must not execute"); }, "synthetic-owner");
+  ToolFactory(server, ["read", "write"]);
   registerOnboardingTools(server, {} as XeroOnboarding, "synthetic-owner");
   const classifications = new Map(registered.mock.calls.map(([name, metadata]) => [name, metadata.annotations?.readOnlyHint]));
   expect(classifications.size).toBe(GetTools.length + ListTools.length + 6);

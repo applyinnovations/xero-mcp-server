@@ -5,8 +5,10 @@ import { ListTools } from "./list/index.js";
 import { connectedTenants } from "../clients/xero-client.js";
 import { RegisterTool } from "../helpers/register-tool.js";
 import { formatError } from "../helpers/format-error.js";
+import CodeBankTransactionTool from "./update/code-bank-transaction.tool.js";
+import type { ToolAccess } from "../types/tool-definition.js";
 
-export function ToolFactory(server: McpServer) {
+export function ToolFactory(server: McpServer, access: readonly ToolAccess[] = ["read"]) {
 
   RegisterTool(server, {
     name: "list-tenants",
@@ -22,6 +24,8 @@ export function ToolFactory(server: McpServer) {
       }
     },
   });
-  [...GetTools, ...ListTools].forEach(createTool => RegisterTool(server, createTool()));
-  // HTTP registers only the narrowly authorized account coding tool separately.
+  for (const createTool of [...GetTools, ...ListTools, CodeBankTransactionTool]) {
+    const tool = createTool();
+    if (access.includes(tool.access)) RegisterTool(server, tool);
+  }
 }
