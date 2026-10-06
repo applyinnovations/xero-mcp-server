@@ -5,13 +5,14 @@ import {
 } from "../../handlers/approve-xero-payroll-timesheet.handler.js";
 import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
 
-const ApprovePayrollTimesheetTool = CreateXeroTool(
-  "approve-timesheet",
-  `Approve a payroll timesheet in Xero by its ID.`,
-  {
+const ApprovePayrollTimesheetTool = CreateXeroTool({
+  name: "approve-timesheet",
+  description: `Approve a payroll timesheet in Xero by its ID.`,
+  access: "write",
+  schema: {
     timesheetID: z.string().describe("The ID of the timesheet to approve."),
   },
-  async (params: { timesheetID: string }) => {
+  handler: async (params: { timesheetID: string }) => {
     const { timesheetID } = params;
     const response = await approveXeroPayrollTimesheet(timesheetID);
 
@@ -37,7 +38,6 @@ const ApprovePayrollTimesheetTool = CreateXeroTool(
       ],
     };
   },
-  "write",
-);
+});
 
 export default ApprovePayrollTimesheetTool;

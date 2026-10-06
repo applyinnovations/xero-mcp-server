@@ -1,11 +1,12 @@
 import { listXeroTaxRates } from "../../handlers/list-xero-tax-rates.handler.js";
 import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
 
-const ListTaxRatesTool = CreateXeroTool(
-  "list-tax-rates",
-  "Lists all tax rates in Xero. Use this tool to get the tax rates to be used when creating invoices in Xero",
-  {},
-  async () => {
+const ListTaxRatesTool = CreateXeroTool({
+  name: "list-tax-rates",
+  description: "Lists all tax rates in Xero. Use this tool to get the tax rates to be used when creating invoices in Xero",
+  access: "read",
+  schema: {},
+  handler: async () => {
     const response = await listXeroTaxRates();
     if (response.error !== null) {
       return {
@@ -56,6 +57,6 @@ const ListTaxRatesTool = CreateXeroTool(
       ],
     };
   },
-);
+});
 
 export default ListTaxRatesTool;

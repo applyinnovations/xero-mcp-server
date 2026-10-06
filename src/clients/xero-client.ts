@@ -69,6 +69,12 @@ export function runWithTenantPermissions<T>(tenantIds: readonly string[], callba
   return permissions.run({ read: tenantIds, write: writeTenantIds }, callback);
 }
 
+// Read tools cannot inherit a caller's mutation authority, including indirect SDK calls.
+export function runWithReadOnlyAccess<T>(callback: () => T): T {
+  const requested = permissions.getStore();
+  return requested ? permissions.run({ read: requested.read, write: [] }, callback) : callback();
+}
+
 // Omitted companies are read-only. This policy governs every SDK mutation,
 // independently of which tools are registered or what the OAuth grant permits.
 export function configuredWritableTenantIds(): string[] {

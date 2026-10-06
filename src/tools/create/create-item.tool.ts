@@ -14,10 +14,11 @@ const salesDetailsSchema = z.object({
   accountCode: z.string().optional(),
 });
 
-const CreateItemTool = CreateXeroTool(
-  "create-item",
-  "Create an item in Xero.",
-  {
+const CreateItemTool = CreateXeroTool({
+  name: "create-item",
+  description: "Create an item in Xero.",
+  access: "write",
+  schema: {
     code: z.string(),
     name: z.string(),
     description: z.string().optional(),
@@ -27,7 +28,7 @@ const CreateItemTool = CreateXeroTool(
     isTrackedAsInventory: z.boolean().optional(),
     inventoryAssetAccountCode: z.string().optional(),
   },
-  async ({
+  handler: async ({
     code,
     name,
     description,
@@ -77,7 +78,6 @@ const CreateItemTool = CreateXeroTool(
       ],
     };
   },
-  "write",
-);
+});
 
 export default CreateItemTool; 

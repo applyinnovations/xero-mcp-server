@@ -3,9 +3,9 @@ import { createXeroPayment } from "../../handlers/create-xero-payment.handler.js
 import { DeepLinkType, getDeepLink } from "../../helpers/get-deeplink.js";
 import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
 
-const CreatePaymentTool = CreateXeroTool(
-  "create-payment",
-  "Create a payment against an invoice in Xero.\
+const CreatePaymentTool = CreateXeroTool({
+  name: "create-payment",
+  description: "Create a payment against an invoice in Xero.\
  This tool records a payment transaction against an invoice. \
  You'll need to provide the invoice ID, account ID to make the payment from, and the amount. \
  The amount must be positive and should not exceed the remaining amount due on the invoice. \
@@ -14,7 +14,8 @@ const CreatePaymentTool = CreateXeroTool(
  When a payment is created, a deep link to the payment in Xero is returned. \
  This deep link can be used to view the payment in Xero directly. \
  This link should be displayed to the user.",
-  {
+  access: "write",
+  schema: {
     invoiceId: z.string().describe("The ID of the invoice to pay"),
     accountId: z
       .string()
@@ -32,7 +33,7 @@ const CreatePaymentTool = CreateXeroTool(
       .optional()
       .describe("Optional payment reference/description"),
   },
-  async ({ invoiceId, accountId, amount, date, reference }) => {
+  handler: async ({ invoiceId, accountId, amount, date, reference }) => {
     const result = await createXeroPayment({
       invoiceId,
       accountId,
@@ -76,7 +77,6 @@ const CreatePaymentTool = CreateXeroTool(
       ],
     };
   },
-  "write",
-);
+});
 
 export default CreatePaymentTool;

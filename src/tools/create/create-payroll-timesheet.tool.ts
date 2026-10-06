@@ -6,11 +6,12 @@ import {
 } from "../../handlers/create-xero-payroll-timesheet.handler.js";
 import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
 
-const CreatePayrollTimesheetTool = CreateXeroTool(
-  "create-timesheet",
-  `Create a new payroll timesheet in Xero.
+const CreatePayrollTimesheetTool = CreateXeroTool({
+  name: "create-timesheet",
+  description: `Create a new payroll timesheet in Xero.
 This allows you to specify details such as the employee ID, payroll calendar ID, start and end dates, and timesheet lines.`,
-  {
+  access: "write",
+  schema: {
     payrollCalendarID: z.string().describe("The ID of the payroll calendar."),
     employeeID: z.string().describe("The ID of the employee."),
     startDate: z.string().describe("The start date of the timesheet period (YYYY-MM-DD)."),
@@ -26,7 +27,7 @@ This allows you to specify details such as the employee ID, payroll calendar ID,
       .optional()
       .describe("The lines of the timesheet."),
   },
-  async (params: Timesheet) => {
+  handler: async (params: Timesheet) => {
     const response = await createXeroPayrollTimesheet(params);
 
     if (response.isError) {
@@ -51,7 +52,6 @@ This allows you to specify details such as the employee ID, payroll calendar ID,
       ],
     };
   },
-  "write",
-);
+});
 
 export default CreatePayrollTimesheetTool;

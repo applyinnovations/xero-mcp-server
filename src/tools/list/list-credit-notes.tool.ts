@@ -2,20 +2,21 @@ import { z } from "zod";
 import { listXeroCreditNotes } from "../../handlers/list-xero-credit-notes.handler.js";
 import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
 
-const ListCreditNotesTool = CreateXeroTool(
-  "list-credit-notes",
-  `List credit notes in Xero. 
+const ListCreditNotesTool = CreateXeroTool({
+  name: "list-credit-notes",
+  description: `List credit notes in Xero.
   Ask the user if they want to see credit notes for a specific contact,
   or to see all credit notes before running. 
   Ask the user if they want the next page of credit notes after running this tool 
   if 10 credit notes are returned. 
   If they want the next page, call this tool again with the next page number 
   and the contact if one was provided in the previous call.`,
-  {
+  access: "read",
+  schema: {
     page: z.number(),
     contactId: z.string().optional(),
   },
-  async ({ page, contactId }) => {
+  handler: async ({ page, contactId }) => {
     const response = await listXeroCreditNotes(page, contactId);
     if (response.error !== null) {
       return {
@@ -70,6 +71,6 @@ const ListCreditNotesTool = CreateXeroTool(
       ],
     };
   },
-);
+});
 
 export default ListCreditNotesTool;

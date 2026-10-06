@@ -11,13 +11,14 @@ const lineItemSchema = z.object({
   taxType: z.string(),
 });
 
-const CreateBankTransactionTool = CreateXeroTool(
-  "create-bank-transaction",
-  `Create a bank transaction in Xero.
+const CreateBankTransactionTool = CreateXeroTool({
+  name: "create-bank-transaction",
+  description: `Create a bank transaction in Xero.
   When a bank transaction is created, a deep link to the bank transaction in Xero is returned.
   This deep link can be used to view the bank transaction in Xero directly.
   This link should be displayed to the user.`,
-  {
+  access: "write",
+  schema: {
     type: z.enum(["RECEIVE", "SPEND"]),
     bankAccountId: z.string(),
     contactId: z.string(),
@@ -27,7 +28,7 @@ const CreateBankTransactionTool = CreateXeroTool(
       .optional()
       .describe("If no date is provided, the date will default to today's date")
   },
-  async ({ type, bankAccountId, contactId, lineItems, reference, date }) => {
+  handler: async ({ type, bankAccountId, contactId, lineItems, reference, date }) => {
     const result = await createXeroBankTransaction(type, bankAccountId, contactId, lineItems, reference, date);
 
     if (result.isError) {
@@ -64,7 +65,6 @@ const CreateBankTransactionTool = CreateXeroTool(
       ],
     };
   },
-  "write",
-);
+});
 
 export default CreateBankTransactionTool;

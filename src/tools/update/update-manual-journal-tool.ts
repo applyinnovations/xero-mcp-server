@@ -5,11 +5,12 @@ import { ensureError } from "../../helpers/ensure-error.js";
 import { LineAmountTypes, ManualJournal } from "xero-node";
 import { updateXeroManualJournal } from "../../handlers/update-xero-manual-journal.handler.js";
 
-const UpdateManualJournalTool = CreateXeroTool(
-  "update-manual-journal",
-  "Update a manual journal in Xero. Only works on draft manual journals.\
+const UpdateManualJournalTool = CreateXeroTool({
+  name: "update-manual-journal",
+  description: "Update a manual journal in Xero. Only works on draft manual journals.\
   Do not modify line items or parameters that have not been specified by the user.",
-  {
+  access: "write",
+  schema: {
     narration: z
       .string()
       .describe("Description of manual journal being posted"),
@@ -61,7 +62,7 @@ const UpdateManualJournalTool = CreateXeroTool(
         "Optional boolean to show on cash basis reports, default is true",
       ),
   },
-  async (args) => {
+  handler: async (args) => {
     try {
       const response = await updateXeroManualJournal(
         args.narration,
@@ -119,7 +120,6 @@ const UpdateManualJournalTool = CreateXeroTool(
       };
     }
   },
-  "write",
-);
+});
 
 export default UpdateManualJournalTool;

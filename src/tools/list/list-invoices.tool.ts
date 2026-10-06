@@ -3,16 +3,17 @@ import { listXeroInvoices } from "../../handlers/list-xero-invoices.handler.js";
 import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
 import { formatLineItem } from "../../helpers/format-line-item.js";
 
-const ListInvoicesTool = CreateXeroTool(
-  "list-invoices",
-  "List invoices in Xero. This includes Draft, Submitted, and Paid invoices. \
+const ListInvoicesTool = CreateXeroTool({
+  name: "list-invoices",
+  description: "List invoices in Xero. This includes Draft, Submitted, and Paid invoices. \
   Ask the user if they want to see invoices for a specific contact, \
   invoice number, or to see all invoices before running. \
   Ask the user if they want the next page of invoices after running this tool \
   if 10 invoices are returned. \
   If they want the next page, call this tool again with the next page number \
   and the contact or invoice number if one was provided in the previous call.",
-  {
+  access: "read",
+  schema: {
     page: z.number(),
     contactIds: z.array(z.string()).optional(),
     invoiceNumbers: z
@@ -20,7 +21,7 @@ const ListInvoicesTool = CreateXeroTool(
       .optional()
       .describe("If provided, invoice line items will also be returned"),
   },
-  async ({ page, contactIds, invoiceNumbers }) => {
+  handler: async ({ page, contactIds, invoiceNumbers }) => {
     const response = await listXeroInvoices(page, contactIds, invoiceNumbers);
     if (response.error !== null) {
       return {
@@ -91,6 +92,6 @@ const ListInvoicesTool = CreateXeroTool(
       ],
     };
   },
-);
+});
 
 export default ListInvoicesTool;

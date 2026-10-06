@@ -11,13 +11,14 @@ const lineItemSchema = z.object({
   taxType: z.string(),
 });
 
-const UpdateBankTransactionTool = CreateXeroTool(
-  "update-bank-transaction",
-  `Update a bank transaction in Xero.
+const UpdateBankTransactionTool = CreateXeroTool({
+  name: "update-bank-transaction",
+  description: `Update a bank transaction in Xero.
   When a bank transaction is updated, a deep link to the bank transaction in Xero is returned.
   This deep link can be used to view the bank transaction in Xero directly.
   This link should be displayed to the user.`,
-  {
+  access: "write",
+  schema: {
     bankTransactionId: z.string(),
     type: z.enum(["RECEIVE", "SPEND"]).optional(),
     contactId: z.string().optional(),
@@ -28,7 +29,7 @@ const UpdateBankTransactionTool = CreateXeroTool(
     reference: z.string().optional(),
     date: z.string().optional()
   },
-  async (
+  handler: async (
     {
       bankTransactionId,
       type,
@@ -74,7 +75,6 @@ const UpdateBankTransactionTool = CreateXeroTool(
       ],
     };
   },
-  "write",
-);
+});
 
 export default UpdateBankTransactionTool;

@@ -597,8 +597,11 @@ companies or invalid values fail startup. All SDK API clients check the actual
 HTTP method and final tenant header before sending a request. Every mutation
 requires both the shared company policy and verified request write permission;
 a readable company cannot become writable by changing tool arguments or headers.
-Existing create/update/delete tools also use the common write guard but remain
-unregistered. Owner-only OAuth onboarding manages read connectivity separately;
+Every tool definition requires explicit `access: "read"` or `access: "write"`
+metadata. Central registration rejects missing classifications and derives MCP
+read-only hints from that field. Read invocations discard request write authority;
+company mutations require the shared write guard regardless of tool name.
+Existing create/update/delete tools remain unregistered. Owner-only OAuth onboarding manages read connectivity separately;
 it does not mutate company records or request write consent.
 
 `XERO_RECODING_ENABLED` defaults to `false`. Enabled HTTP configuration requires

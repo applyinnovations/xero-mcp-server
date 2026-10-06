@@ -3,17 +3,18 @@ import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
 import { listXeroBankTransactions } from "../../handlers/list-xero-bank-transactions.handler.js";
 import { xeroClient } from "../../clients/xero-client.js";
 
-const ListBankTransactionsTool = CreateXeroTool(
-  "list-bank-transactions",
-  "Read full structured SPEND/RECEIVE bank transactions. Reconciled only by default. Request successive pages until mayHaveMore is false. Reads are not a point-in-time snapshot.",
-  {
+const ListBankTransactionsTool = CreateXeroTool({
+  name: "list-bank-transactions",
+  description: "Read full structured SPEND/RECEIVE bank transactions. Reconciled only by default. Request successive pages until mayHaveMore is false. Reads are not a point-in-time snapshot.",
+  access: "read",
+  schema: {
     page: z.number().int().min(1).default(1),
     pageSize: z.number().int().min(1).max(100).default(100),
     bankAccountId: z.string().uuid().optional(),
     type: z.enum(["SPEND", "RECEIVE"]).optional(),
     reconciledOnly: z.boolean().default(true),
   },
-  async ({ page, pageSize, bankAccountId, type, reconciledOnly }) => {
+  handler: async ({ page, pageSize, bankAccountId, type, reconciledOnly }) => {
     const response = await listXeroBankTransactions(page, bankAccountId, pageSize, type, reconciledOnly);
     if (response.isError) return { isError: true, content: [{ type: "text", text: response.error }] };
     const result = {
@@ -23,5 +24,5 @@ const ListBankTransactionsTool = CreateXeroTool(
     };
     return { structuredContent: result, content: [{ type: "text", text: JSON.stringify(result) }] };
   },
-);
+});
 export default ListBankTransactionsTool;

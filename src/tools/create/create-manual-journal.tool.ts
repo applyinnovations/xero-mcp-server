@@ -5,14 +5,15 @@ import { DeepLinkType, getDeepLink } from "../../helpers/get-deeplink.js";
 import { ensureError } from "../../helpers/ensure-error.js";
 import { LineAmountTypes, ManualJournal } from "xero-node";
 
-const CreateManualJournalTool = CreateXeroTool(
-  "create-manual-journal",
-  "Create a manual journal in Xero.\
+const CreateManualJournalTool = CreateXeroTool({
+  name: "create-manual-journal",
+  description: "Create a manual journal in Xero.\
   Retrieve a list of account codes in Xero to use for the journal lines.\
   Journal lines must contain at least two individual journal lines with account codes, \
   use basic accounting account types pairing when not specified, \
   and make sure journal line pairs have credit and debit balanced.",
-  {
+  access: "write",
+  schema: {
     narration: z
       .string()
       .describe("Description of manual journal being posted"),
@@ -63,7 +64,7 @@ const CreateManualJournalTool = CreateXeroTool(
         "Optional boolean to show on cash basis reports, default is true",
       ),
   },
-  async (args) => {
+  handler: async (args) => {
     try {
       const response = await createXeroManualJournal(
         args.narration,
@@ -145,7 +146,6 @@ const CreateManualJournalTool = CreateXeroTool(
       };
     }
   },
-  "write",
-);
+});
 
 export default CreateManualJournalTool;

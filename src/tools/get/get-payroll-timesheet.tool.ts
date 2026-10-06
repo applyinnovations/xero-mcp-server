@@ -5,14 +5,15 @@ import {
 } from "../../handlers/get-xero-payroll-timesheet.handler.js";
 import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
 
-const GetPayrollTimesheetTool = CreateXeroTool(
-  "get-timesheet",
-  `Retrieve a single payroll timesheet from Xero by its ID.
+const GetPayrollTimesheetTool = CreateXeroTool({
+  name: "get-timesheet",
+  description: `Retrieve a single payroll timesheet from Xero by its ID.
 This provides details such as the timesheet ID, employee ID, start and end dates, total hours, and the last updated date.`,
-  {
+  access: "read",
+  schema: {
     timesheetID: z.string().describe("The ID of the timesheet to retrieve."),
   },
-  async (params: { timesheetID: string }) => {
+  handler: async (params: { timesheetID: string }) => {
     const { timesheetID } = params;
     const response = await getXeroPayrollTimesheet(timesheetID);
 
@@ -58,6 +59,6 @@ This provides details such as the timesheet ID, employee ID, start and end dates
       ],
     };
   },
-);
+});
 
 export default GetPayrollTimesheetTool;

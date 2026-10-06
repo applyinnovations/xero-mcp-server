@@ -2,15 +2,16 @@ import { z } from "zod";
 import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
 import { updateXeroTrackingCategory } from "../../handlers/update-xero-tracking-category.handler.js";
 
-const UpdateTrackingCategoryTool = CreateXeroTool(
-  "update-tracking-category",
-  `Updates an existing tracking category in Xero.`,
-  {
+const UpdateTrackingCategoryTool = CreateXeroTool({
+  name: "update-tracking-category",
+  description: `Updates an existing tracking category in Xero.`,
+  access: "write",
+  schema: {
     trackingCategoryId: z.string(),
     name: z.string().optional(),
     status: z.enum(["ACTIVE", "ARCHIVED"]).optional()
   },
-  async ({ trackingCategoryId, name, status }) => {
+  handler: async ({ trackingCategoryId, name, status }) => {
     const response = await updateXeroTrackingCategory(trackingCategoryId, name, status);
 
     if (response.isError) {
@@ -35,7 +36,6 @@ const UpdateTrackingCategoryTool = CreateXeroTool(
       ]
     };
   },
-  "write",
-);
+});
 
 export default UpdateTrackingCategoryTool;

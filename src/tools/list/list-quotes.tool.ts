@@ -2,18 +2,19 @@ import { z } from "zod";
 import { listXeroQuotes } from "../../handlers/list-xero-quotes.handler.js";
 import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
 
-const ListQuotesTool = CreateXeroTool(
-  "list-quotes",
-  `List all quotes in Xero. 
+const ListQuotesTool = CreateXeroTool({
+  name: "list-quotes",
+  description: `List all quotes in Xero.
   Ask the user if they want to see quotes for a specific contact before running. 
   Ask the user if they want the next page of quotes after running this tool if 10 quotes are returned. 
   If they do, call this tool again with the page number and the contact provided in the previous call.`,
-  {
+  access: "read",
+  schema: {
     page: z.number(),
     contactId: z.string().optional(),
     quoteNumber: z.string().optional(),
   },
-  async ({ page, contactId, quoteNumber }) => {
+  handler: async ({ page, contactId, quoteNumber }) => {
     const response = await listXeroQuotes(page, contactId, quoteNumber);
     if (response.error !== null) {
       return {
@@ -72,6 +73,6 @@ const ListQuotesTool = CreateXeroTool(
       ],
     };
   },
-);
+});
 
 export default ListQuotesTool;

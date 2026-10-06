@@ -25,15 +25,16 @@ const lineItemSchema = z.object({
     Only use if prompted by the user.").optional(),
 });
 
-const UpdateInvoiceTool = CreateXeroTool(
-  "update-invoice",
-  "Update an invoice in Xero. Only works on draft invoices.\
+const UpdateInvoiceTool = CreateXeroTool({
+  name: "update-invoice",
+  description: "Update an invoice in Xero. Only works on draft invoices.\
   All line items must be provided. Any line items not provided will be removed. Including existing line items.\
   Do not modify line items that have not been specified by the user.\
  When an invoice is updated, a deep link to the invoice in Xero is returned. \
  This deep link can be used to view the contact in Xero directly. \
  This link should be displayed to the user.",
-  {
+  access: "write",
+  schema: {
     invoiceId: z.string().describe("The ID of the invoice to update."),
     lineItems: z.array(lineItemSchema).optional().describe(
       "All line items must be provided. Any line items not provided will be removed. Including existing line items. \
@@ -45,7 +46,7 @@ const UpdateInvoiceTool = CreateXeroTool(
     contactId: z.string().optional().describe("The ID of the contact to update the invoice for. \
       Can be obtained from the list-contacts tool."),
   },
-  async (
+  handler: async (
     {
       invoiceId,
       lineItems,
@@ -114,7 +115,6 @@ const UpdateInvoiceTool = CreateXeroTool(
       ],
     };
   },
-  "write",
-);
+});
 
 export default UpdateInvoiceTool;

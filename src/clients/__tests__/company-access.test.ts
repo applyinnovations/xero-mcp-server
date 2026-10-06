@@ -4,6 +4,7 @@ import { AddressInfo } from "node:net";
 import { readdir } from "node:fs/promises";
 import { configuredWritableTenantIds, runWithTenantPermissions, runWithXeroClient, TenantXeroClient } from "../xero-client.js";
 import { updateXeroTrackingOption } from "../../handlers/update-xero-tracking-options.handler.js";
+import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
 import type { ToolDefinition } from "../../types/tool-definition.js";
 import type { ZodRawShapeCompat } from "@modelcontextprotocol/sdk/server/zod-compat.js";
 
@@ -104,6 +105,7 @@ it("declares every existing create/update/delete tool as a shared-policy mutatio
       const module = await import(new URL(name, base).href) as { default?: () => ToolDefinition<ZodRawShapeCompat> };
       if (!module.default) continue;
       const tool = module.default();
+      expect(tool.access, tool.name).toBe("write");
       for (const tenantId of readOnly) {
         const result = await request(() => tool.handler({ tenantId }, {} as never), all);
         expect(result, tool.name).toMatchObject({ isError: true, content: [{ text: expect.stringContaining("read-only") }] });
@@ -111,4 +113,23 @@ it("declares every existing create/update/delete tool as a shared-policy mutatio
     }
   }
   expect(received).toEqual([]);
+});
+
+
+it("prevents a declared read tool from mutating even when its caller has write permission", async () => {
+  vi.stubEnv("XERO_CLIENT_BEARER_TOKEN", "synthetic-fixture");
+  const selected = client(writable);
+  const tool = CreateXeroTool({
+    name: "arbitrary-name", description: "Read contract", access: "read", schema: {},
+    handler: async () => {
+      await selected.accountingApi.createAccount(writable, {});
+      return { content: [] };
+    },
+  })();
+  const result = await request(() => tool.handler({ tenantId: writable }, {} as never));
+  expect(result).toMatchObject({ isError: true, content: [{ text: expect.stringContaining("request write permission") }] });
+  expect(received).toEqual([]);
+  // Read invocation scope must not remove the caller's subsequent authorized write.
+  await request(() => selected.accountingApi.createAccount(writable, {}));
+  expect(received).toEqual([{ method: "PUT", tenant: writable }]);
 });

@@ -24,13 +24,14 @@ const lineItemSchema = z.object({
     Only use if prompted by the user.").optional(),
 });
 
-const CreateInvoiceTool = CreateXeroTool(
-  "create-invoice",
-  "Create an invoice in Xero.\
+const CreateInvoiceTool = CreateXeroTool({
+  name: "create-invoice",
+  description: "Create an invoice in Xero.\
  When an invoice is created, a deep link to the invoice in Xero is returned. \
  This deep link can be used to view the invoice in Xero directly. \
  This link should be displayed to the user.",
-  {
+  access: "write",
+  schema: {
     contactId: z.string().describe("The ID of the contact to create the invoice for. \
       Can be obtained from the list-contacts tool."),
       
@@ -42,7 +43,7 @@ const CreateInvoiceTool = CreateXeroTool(
     reference: z.string().describe("A reference number for the invoice.").optional(),
     date: z.string().describe("The date the invoice was created (YYYY-MM-DD format).").optional(),
   },
-  async ({ contactId, lineItems, type, reference, date }) => {
+  handler: async ({ contactId, lineItems, type, reference, date }) => {
     const xeroInvoiceType = type === "ACCREC" ? Invoice.TypeEnum.ACCREC : Invoice.TypeEnum.ACCPAY;
     const result = await createXeroInvoice(contactId, lineItems, xeroInvoiceType, reference, date);
     if (result.isError) {
@@ -85,7 +86,6 @@ const CreateInvoiceTool = CreateXeroTool(
       ],
     };
   },
-  "write",
-);
+});
 
 export default CreateInvoiceTool;

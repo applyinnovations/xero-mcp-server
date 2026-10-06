@@ -33,13 +33,13 @@ describe("structured bank reads", () => {
     expect(tool.schema.page.safeParse(0).success).toBe(false);
   });
 
-  it("advertises only read tools while reconciliation proof is pending", () => {
+  it("registers only explicitly read-classified tools in the base registry", () => {
     const server = new McpServer({ name: "test", version: "1" });
-    const spy = vi.spyOn(server, "tool");
+    const spy = vi.spyOn(server, "registerTool");
     ToolFactory(server);
     const names = spy.mock.calls.map((call) => call[0]);
     expect(names).toContain("list-tenants");
     expect(names).toContain("get-bank-transaction");
-    expect(names.every((name) => /^(list|get)-/.test(name))).toBe(true);
+    expect(spy.mock.calls.every(([, metadata]) => metadata.annotations?.readOnlyHint === true)).toBe(true);
   });
 });

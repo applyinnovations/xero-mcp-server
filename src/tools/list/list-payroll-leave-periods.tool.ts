@@ -3,15 +3,16 @@ import { listXeroPayrollLeavePeriods } from "../../handlers/list-xero-payroll-le
 import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
 import { LeavePeriod } from "../../types/payroll-nz-types.js";
 
-const ListPayrollLeavePeriodsToolTool = CreateXeroTool(
-  "list-payroll-leave-periods",
-  "List all leave periods for a specific employee in Xero. This shows detailed time off periods including start and end dates, period status, payment dates, and leave types. Provide an employee ID to see their leave periods.",
-  {
+const ListPayrollLeavePeriodsToolTool = CreateXeroTool({
+  name: "list-payroll-leave-periods",
+  description: "List all leave periods for a specific employee in Xero. This shows detailed time off periods including start and end dates, period status, payment dates, and leave types. Provide an employee ID to see their leave periods.",
+  access: "read",
+  schema: {
     employeeId: z.string().describe("The Xero employee ID to fetch leave periods for"),
     startDate: z.string().optional().describe("Optional start date in YYYY-MM-DD format"),
     endDate: z.string().optional().describe("Optional end date in YYYY-MM-DD format"),
   },
-  async ({ employeeId, startDate, endDate }) => {
+  handler: async ({ employeeId, startDate, endDate }) => {
     const response = await listXeroPayrollLeavePeriods(employeeId, startDate, endDate);
     if (response.isError) {
       return {
@@ -50,6 +51,6 @@ const ListPayrollLeavePeriodsToolTool = CreateXeroTool(
       ],
     };
   },
-);
+});
 
 export default ListPayrollLeavePeriodsToolTool;

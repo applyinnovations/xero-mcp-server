@@ -3,14 +3,15 @@ import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
 import { listXeroTrackingCategories } from "../../handlers/list-xero-tracking-categories.handler.js";
 import { formatTrackingOption } from "../../helpers/format-tracking-option.js";
 
-const ListTrackingCategoriesTool = CreateXeroTool(
-  "list-tracking-categories",
-  "List all tracking categories in Xero, along with their associated tracking options.",
-  {
+const ListTrackingCategoriesTool = CreateXeroTool({
+  name: "list-tracking-categories",
+  description: "List all tracking categories in Xero, along with their associated tracking options.",
+  access: "read",
+  schema: {
     includeArchived: z.boolean().optional()
       .describe("Determines whether or not archived categories will be returned. By default, no archived categories will be returned.")
   },
-  async ({ includeArchived }) => {
+  handler: async ({ includeArchived }) => {
     const response = await listXeroTrackingCategories(includeArchived);
 
     if (response.isError) {
@@ -43,7 +44,7 @@ const ListTrackingCategoriesTool = CreateXeroTool(
         })) || [])
       ]
     };
-  }
-);
+  },
+});
 
 export default ListTrackingCategoriesTool;
