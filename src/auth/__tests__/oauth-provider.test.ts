@@ -9,6 +9,7 @@ let directory: string;
 let path: string;
 let keyPath: string;
 let store: EncryptedTokenStore;
+let initialRevision: string | undefined;
 const tokens: StoredTokens = { access_token: "invalid-old-access", refresh_token: "invalid-old-refresh", expires_at: 1000, scope: "offline_access accounting.banktransactions.read" };
 beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), "xero-oauth-fixture-"));
@@ -16,6 +17,7 @@ beforeEach(async () => {
   await writeFile(keyPath, Buffer.alloc(32, 7).toString("base64"), { mode: 0o600 });
   store = new EncryptedTokenStore(path, keyPath, "fixture-client");
   await store.initialize(tokens);
+  initialRevision = (await store.read()).grantRevision;
 });
 afterEach(async () => { vi.restoreAllMocks(); await rm(directory, { recursive: true, force: true }); });
 const success = () => new Response(JSON.stringify({ access_token: "invalid-new-access", refresh_token: "invalid-new-refresh", expires_in: 1800, token_type: "Bearer" }), { status: 200 });
@@ -27,7 +29,7 @@ describe("durable OAuth", () => {
     expect(disk).not.toContain(tokens.access_token);
     expect(disk).not.toContain(tokens.refresh_token);
     expect((await stat(path)).mode & 0o777).toBe(0o600);
-    expect(await new EncryptedTokenStore(path, keyPath, "fixture-client").read()).toEqual(tokens);
+    expect(await new EncryptedTokenStore(path, keyPath, "fixture-client").read()).toEqual({ ...tokens, grantRevision: initialRevision });
     await expect(store.initialize(tokens)).rejects.toThrow("already exists");
   });
 
@@ -45,6 +47,7 @@ describe("durable OAuth", () => {
     expect(results.every((result) => !("refresh_token" in result))).toBe(true);
     expect(results.every((result) => result.scope === tokens.scope)).toBe(true);
     expect((await store.read()).refresh_token).toBe("invalid-new-refresh");
+    expect((await store.read()).grantRevision).toBe(initialRevision);
     const restarted = new DurableOAuthProvider(options(request, new EncryptedTokenStore(path, keyPath, "fixture-client")));
     await restarted.getTokenSet();
     expect(request).toHaveBeenCalledTimes(1);
@@ -61,7 +64,7 @@ describe("durable OAuth", () => {
     const request = vi.fn<typeof fetch>().mockResolvedValueOnce(new Response(JSON.stringify({ error: "server_error", access_token: "SENSITIVE_RESPONSE" }), { status: 500 })).mockResolvedValueOnce(success());
     const provider = new DurableOAuthProvider(options(request));
     await expect(provider.getTokenSet()).rejects.toThrow("credentials unavailable");
-    expect(await store.read()).toEqual(tokens);
+    expect(await store.read()).toEqual({ ...tokens, grantRevision: initialRevision });
     expect((await provider.getTokenSet()).access_token).toBe("invalid-new-access");
   });
 
@@ -72,6 +75,7 @@ describe("durable OAuth", () => {
     await expect(provider.getTokenSet()).rejects.toThrow("credentials unavailable");
     expect(request).toHaveBeenCalledTimes(1);
     expect((await store.read()).reauthorizeRequired).toBe(true);
+    expect((await store.read()).grantRevision).toBe(initialRevision);
   });
 
   it("rejects tampered ciphertext, client substitution and public key files", async () => {

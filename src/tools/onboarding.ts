@@ -17,9 +17,9 @@ const transactionId = z.string().min(1).max(128);
 export const ConnectionTools = [
   CreateTool(context => ({
     name: "begin-xero-connection", resource: "connection", access: "write",
-    description: "Owner-only Xero PKCE consent. Run only when the user explicitly asks to connect Xero. Return the browser start link to that user. Set renewRevokedGrant only for explicitly requested recovery of an invalid_grant marker with existing configured tenants; healthy stored grants are never replaced. Creates no accounting records.",
-    schema: { renewRevokedGrant: z.boolean().optional() }, annotations: { destructiveHint: false, idempotentHint: false },
-    handler: input => result(context, (onboarding, owner) => onboarding.begin(owner, input.renewRevokedGrant)),
+    description: "Owner-only Xero PKCE consent. Run only when the user explicitly asks to connect or renew Xero consent. Return the browser start link to that user. Set renewGrant only for explicitly requested renewal to the operator-configured approved scopes; review requestedScopes and confirm the identical configured organisation set before replacing existing state. Set renewRevokedGrant only for explicitly requested recovery of an invalid_grant marker with existing configured tenants; ordinary starts never replace stored grants. Creates no accounting records.",
+    schema: { renewGrant: z.boolean().optional(), renewRevokedGrant: z.boolean().optional() }, annotations: { destructiveHint: false, idempotentHint: false },
+    handler: input => result(context, (onboarding, owner) => onboarding.begin(owner, input)),
   })),
   CreateTool(context => ({
     name: "get-xero-connection-status", resource: "connection", access: "read",
@@ -35,7 +35,7 @@ export const ConnectionTools = [
   })),
   CreateTool(context => ({
     name: "confirm-xero-connection", resource: "connection", access: "write",
-    description: "Owner-only encrypted grant persistence. Run only after the user explicitly confirms the complete displayed organisation list. Pass its exact tenant UUIDs. No accounting writes; healthy existing state is never replaced.",
+    description: "Owner-only encrypted grant persistence. Run only after the user explicitly confirms the complete displayed organisation list. Pass its exact tenant UUIDs. No accounting writes; existing state is replaced only by an explicitly requested grant renewal.",
     schema: { transactionId, tenantIds: z.array(z.string().uuid()).min(1), confirmed: z.literal(true) },
     annotations: { destructiveHint: false, idempotentHint: false },
     handler: input => result(context, (onboarding, owner) => onboarding.confirm(owner, input.transactionId, input.tenantIds)),

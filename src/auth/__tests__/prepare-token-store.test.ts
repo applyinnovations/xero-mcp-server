@@ -31,13 +31,15 @@ it("preserves rotated/revoked state across startup and rejects a changed key", a
   await prepareTokenStore(options);
   const tokens = { access_token: "invalid-fixture", refresh_token: "invalid-rotated-fixture", expires_at: 1, reauthorizeRequired: true };
   await store.initialize(tokens);
+  const stored = await store.read();
+  expect(stored.grantRevision).toBeDefined();
   const envelope = await readFile(options.statePath);
   await chmod(options.statePath, 0o660);
   await chmod(join(directory, "oauth"), 0o770);
   await prepareTokenStore(options);
   expect((await stat(options.statePath)).mode & 0o777).toBe(0o600);
   expect(await readFile(options.statePath)).toEqual(envelope);
-  expect(await store.read()).toEqual(tokens);
+  expect(await store.read()).toEqual(stored);
   await expect(prepareTokenStore({ ...options, allowOnboarding: false })).rejects.toThrow();
   await chmod(join(directory, "projected-key"), 0o600);
   await writeFile(join(directory, "projected-key"), Buffer.alloc(32, 8).toString("base64"));
