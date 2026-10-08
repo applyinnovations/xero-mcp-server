@@ -20,6 +20,7 @@ const ListCreditNotesTool = CreateXeroTool({
     const response = await listXeroCreditNotes(page, contactId);
     if (response.error !== null) {
       return {
+        isError: true,
         content: [
           {
             type: "text" as const,

@@ -25,6 +25,7 @@ const ListInvoicesTool = CreateXeroTool({
     const response = await listXeroInvoices(page, contactIds, invoiceNumbers);
     if (response.error !== null) {
       return {
+        isError: true,
         content: [
           {
             type: "text" as const,

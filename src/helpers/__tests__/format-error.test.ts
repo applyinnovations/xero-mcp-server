@@ -61,6 +61,27 @@ describe("formatError", () => {
   });
 
   describe("xero-node SDK error shape", () => {
+    it.each([401, 403])("distinguishes insufficient_scope from an expired credential at HTTP %s without exposing its envelope", status => {
+      const error = JSON.stringify({ response: { statusCode: status,
+        headers: { "www-authenticate": 'Bearer error="insufficient_scope"', "set-cookie": "SECRET_COOKIE" },
+        body: { Detail: "insufficient_scope", UnrelatedRecord: "PRIVATE_RECORD" },
+        request: { headers: { authorization: "Bearer SECRET_TOKEN" } },
+      } });
+      const message = formatError(error);
+      expect(message).toContain("OAuth consent");
+      expect(message).toContain("refresh cannot add scopes");
+      expect(message).not.toContain("check your Xero credentials");
+      expect(xeroErrorDetails(error).providerMessage).toBe(message);
+      for (const secret of ["SECRET_TOKEN", "SECRET_COOKIE", "PRIVATE_RECORD"]) expect(message).not.toContain(secret);
+    });
+
+    it("recognizes only the scope marker in allowed authentication response fields", () => {
+      expect(formatError({ response: { statusCode: 401, body: { Invoice: { Reference: "insufficient_scope" } } } }))
+        .toBe("Authentication failed. Please check your Xero credentials.");
+      const error = makeAxiosError(401, "insufficient_scope");
+      expect(formatError(error)).toContain("OAuth consent");
+    });
+
     it("decodes the actual serialized SDK envelope without exposing request credentials or echoed records", () => {
       const error = JSON.stringify({ response: { statusCode: 400,
         request: { headers: { authorization: "Bearer SECRET_TOKEN", cookie: "SECRET_COOKIE" } },

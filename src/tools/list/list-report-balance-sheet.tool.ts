@@ -22,6 +22,7 @@ const ListReportBalanceSheetTool = CreateXeroTool({
     // Check if the response contains an error
     if (response.error !== null) {
       return {
+        isError: true,
         content: [
           {
             type: "text" as const,

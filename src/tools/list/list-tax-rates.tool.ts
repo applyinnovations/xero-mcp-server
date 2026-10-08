@@ -10,6 +10,7 @@ const ListTaxRatesTool = CreateXeroTool({
     const response = await listXeroTaxRates();
     if (response.error !== null) {
       return {
+        isError: true,
         content: [
           {
             type: "text" as const,

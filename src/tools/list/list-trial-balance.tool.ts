@@ -14,6 +14,7 @@ const ListTrialBalanceTool = CreateXeroTool({
     const response = await listXeroTrialBalance(args?.date, args?.paymentsOnly);
     if (response.error !== null) {
       return {
+        isError: true,
         content: [
           {
             type: "text" as const,

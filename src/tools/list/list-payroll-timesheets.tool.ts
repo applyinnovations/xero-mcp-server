@@ -16,6 +16,7 @@ This retrieves comprehensive timesheet details including timesheet IDs, employee
 
     if (response.isError) {
       return {
+        isError: true,
         content: [
           {
             type: "text" as const,
