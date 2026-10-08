@@ -41,7 +41,10 @@ export async function createPayrollTimesheet(input: unknown): Promise<PayrollTim
   if (xeroClient.payrollRegion === "AU") {
     const timesheet = auTimesheetSchema.parse(input);
     await xeroClient.authenticate();
-    return (await xeroClient.payrollAUApi.createTimesheet(xeroClient.tenantId, [timesheet])).body.timesheets?.[0] ?? null;
+    const created = (await xeroClient.payrollAUApi.createTimesheet(xeroClient.tenantId, [timesheet])).body.timesheets;
+    if (created?.some(item => item.validationErrors?.length)) throw new Error("Xero AU rejected the timesheet with validation errors");
+    if (created?.length !== 1 || !created[0].timesheetID) throw new Error("Xero AU did not return a single created timesheet ID");
+    return created[0];
   }
   const timesheet = nzTimesheetSchema.parse(input);
   await xeroClient.authenticate();

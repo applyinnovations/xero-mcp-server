@@ -262,3 +262,14 @@ it("never elevates AU timesheet read consent to creation even with company write
     expect(requests).toEqual([]);
   }, undefined, "payroll.timesheets.read");
 });
+
+it.each([
+  { Timesheets: [] },
+  { Timesheets: [{ EmployeeID: employee }] },
+  { Timesheets: [{ ...auSheet, ValidationErrors: [{ Message: "Rejected fixture" }] }] },
+])("does not report AU creation success for a missing receipt or validation rejection", async body => {
+  await fixture("AU", async (_client, requests) => {
+    expect(await createXeroPayrollTimesheet(auInput)).toMatchObject({ isError: true, result: null, error: expect.stringContaining("Xero AU") });
+    expect(requests.map(request => request.path)).toEqual(["/payroll.xro/1.0/Timesheets"]);
+  }, () => ({ body }));
+});
