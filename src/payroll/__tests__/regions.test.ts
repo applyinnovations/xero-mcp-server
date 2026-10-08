@@ -258,7 +258,7 @@ it.each((["NZ", "AU"] as const).flatMap(region => timesheetMutations.map(operati
     if (region === "AU" && resource === "timesheet") expect(result).toMatchObject({ result: { status: _name === "approve" ? "Approved" : "Draft", totalHours: 0 } });
     expect(requests).toHaveLength(1);
     expect(requests[0]).toMatchObject({ method, path: `/payroll.xro/2.0${path}`, tenant, authorization: "Bearer synthetic-fixture" });
-    expect(requests[0].body).toEqual(resource === "timesheetLine" ? line : undefined);
+    expect(requests[0].body).toEqual(resource === "timesheetLine" ? line : region === "NZ" ? {} : undefined);
     for (const call of foreignCalls) expect(call).not.toHaveBeenCalled();
   });
 });

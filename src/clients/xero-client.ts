@@ -42,26 +42,23 @@ export class TenantXeroClient extends XeroClient {
       const apply = authentication.applyToRequest.bind(authentication);
       authentication.applyToRequest = async request => {
         await apply(request);
-        if ((api === this.payrollNZApi && this.payrollRegion !== "NZ") ||
-          (api === this.payrollAUApi && this.payrollRegion !== "AU") || api === this.payrollUKApi) {
-          throw new Error(`Payroll API does not match XERO_PAYROLL_REGION=${this.payrollRegion}; cross-region requests are disabled`);
-        }
         const domain = api === this.accountingApi ? "accounting" : api === this.payrollNZApi ? "payrollNZ" : api === this.payrollAUApi ? "payrollAU" : undefined;
         const path = domain && request.url ? new URL(request.url).pathname.slice(new URL(api.basePath).pathname.replace(/\/$/, "").length) : undefined;
+        const region = api === this.payrollNZApi ? "NZ" : api === this.payrollAUApi ? "AU" : api === this.payrollUKApi ? "UK" : undefined;
+        await this.assertRequestAccess(request, domain, path, region);
         if (api === this.payrollAUApi && path?.split("/")[1] === "Timesheets") throw new Error("AU Timesheets 1.0 is disabled; use the AU Timesheets 2.0 adapter");
-        await this.assertRequestAccess(request, domain, path);
       };
     }
   }
 
   // Both SDK APIs and the narrow AU v2 adapter use this same authorization gate.
-  private async assertRequestAccess(request: SdkRequest, domain?: "accounting" | "payrollNZ" | "payrollAU", path?: string, payrollRegion?: "AU"): Promise<void> {
+  private async assertRequestAccess(request: SdkRequest, domain?: "accounting" | "payrollNZ" | "payrollAU", path?: string, payrollRegion?: "AU" | "NZ" | "UK"): Promise<void> {
     const headers = Object.entries(request.headers ?? {}).filter(([name]) => name.toLowerCase() === "xero-tenant-id");
     if (headers.length !== 1 || headers[0][1] !== this.tenantId) throw new Error("Xero request tenant must match the selected tenant");
     if (!effectiveTenantIds().includes(this.tenantId)) throw new Error("Selected tenant is not allowed");
-    if (payrollRegion && payrollRegion !== this.payrollRegion) throw new Error(`Payroll API does not match XERO_PAYROLL_REGION=${this.payrollRegion}; cross-region requests are disabled`);
     const read = ["GET", "HEAD", "OPTIONS"].includes((request.method ?? "").toUpperCase());
     if (!read) assertTenantWriteAccess(this.tenantId);
+    if (payrollRegion && payrollRegion !== this.payrollRegion) throw new Error(`Payroll API does not match XERO_PAYROLL_REGION=${this.payrollRegion}; cross-region requests are disabled`);
     if (domain && path) {
       const tokens = await (this.tokens ??= this.provider.getTokenSet());
       assertXeroEndpointConsent(domain, path, read, tokens.scope);
