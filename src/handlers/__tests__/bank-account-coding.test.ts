@@ -29,7 +29,9 @@ beforeEach(() => {
 });
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 
-it.each([[true, "SPEND"], [false, "SPEND"], [true, "RECEIVE"], [false, "RECEIVE"]] as const)("codes existing %s/%s records preserving every unrelated field", async (reconciled, type) => {
+// These accepted-provider simulations check preservation, not live Xero editability
+// or whether a reconciliation flag represents a real bank statement match.
+it.each([[true, "SPEND"], [false, "SPEND"], [true, "RECEIVE"], [false, "RECEIVE"]] as const)("checks preservation for IsReconciled=%s/%s when the simulated provider accepts", async (reconciled, type) => {
   record.isReconciled = reconciled; record.type = type as BankTransaction.TypeEnum;
   const before = structuredClone(record), update = successfulPost();
   const result = await invoke([{ ...changes[0], expectedAccountCode: "400" }], before.updatedDateUTC!.toISOString());
@@ -93,7 +95,10 @@ it.each([400, 401, 403, 404, 405, 409, 413, 415, 422, 429])("reports known Xero 
   expect(JSON.stringify(result)).not.toContain("secret"); expect(update).toHaveBeenCalledTimes(1);
 });
 
-it("reports the real SDK's serialized HTTP validation rejection without retrying or leaking its envelope", async () => {
+it.each([
+  "The account code is not valid for this document.",
+  "This Bank Transaction cannot be edited as it has been reconciled with a Bank Statement.",
+])("reports the real SDK's serialized HTTP 400 rejection without retrying: %s", async validationMessage => {
   let requests = 0;
   const server = createServer((request, response) => {
     requests++;
@@ -102,7 +107,7 @@ it("reports the real SDK's serialized HTTP validation rejection without retrying
     expect(request.headers['idempotency-key']).toBe(idempotencyKey);
     response.writeHead(400, { "content-type": "application/json", "set-cookie": "SECRET_COOKIE" });
     response.end(JSON.stringify({ ErrorNumber: 10, Type: "ValidationException", Message: "A validation exception occurred", Elements: [
-      { Description: "PRIVATE_ECHOED_RECORD", ValidationErrors: [{ Message: "The account code is not valid for this document." }] },
+      { Description: "PRIVATE_ECHOED_RECORD", ValidationErrors: [{ Message: validationMessage }] },
     ] }));
   });
   server.listen(0, "127.0.0.1"); await once(server, "listening");
@@ -114,7 +119,7 @@ it("reports the real SDK's serialized HTTP validation rejection without retrying
     const result = await runWithTenantPermissions([tenantId], () => runWithXeroClient(sdkClient,
       () => codeXeroBankTransaction(transaction.bankTransactionID!, changes, idempotencyKey)), [tenantId]);
     expect(result).toMatchObject({ outcome: "rejected", code: "write", httpStatus: 400,
-      validationMessages: ["The account code is not valid for this document."], statementLinkageVerified: false });
+      validationMessages: [validationMessage], statementLinkageVerified: false });
     expect(requests).toBe(1); expect(update).toHaveBeenCalledTimes(1);
     expect(record).toEqual(transaction);
     for (const secret of ["SECRET_BEARER_TOKEN", "SECRET_COOKIE", "PRIVATE_ECHOED_RECORD"]) expect(JSON.stringify(result)).not.toContain(secret);
