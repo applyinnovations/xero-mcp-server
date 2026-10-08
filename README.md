@@ -22,6 +22,13 @@ This is a Model Context Protocol (MCP) server implementation for Xero. It provid
 - [Xero API Explorer](https://api-explorer.xero.com/)
 - [Xero OpenAPI Specs](https://github.com/XeroAPI/Xero-OpenAPI)
 - [Xero-Node Public API SDK Docs](https://xeroapi.github.io/xero-node/accounting)
+
+Payroll API region is selected with `XERO_PAYROLL_REGION=NZ` (the default when
+unset) or `XERO_PAYROLL_REGION=AU`. This selects the payroll API and its regional
+schemas, not an accounting hostname. Unsupported values fail startup. All
+organisations served by a process must use the selected payroll region; run
+separate processes for mixed regions. See [payroll regional support](docs/payroll-regions.md)
+for supported operations, AU timesheet input, and OAuth scope requirements.
 - [Developer Documentation](https://developer.xero.com/)
 
 ## Setup
@@ -689,13 +696,13 @@ Every tool definition requires explicit `access: "read"` or `access: "write"`
 metadata. Central registration rejects missing classifications and derives MCP
 read-only hints from that field. Read invocations discard request write authority;
 company mutations require the shared write guard regardless of tool name.
-`ToolCatalog` in `src/tools/index.ts` is the complete inventory used by stdio and
-HTTP. Category exports preserve all upstream tools: 11 creates, 13 updates plus
-coding, and one delete. Entrypoints register all tools permitted by the caller's
-resource and read/write access, without support classifications or feature flags.
-A company reader receives 28 reads; a company writer receives all 54 company
-tools, including the original 25 mutations and coding. Connection access is
-independent and adds up to four tools. Upstream v0.0.16 registered all CRUD tools
+`ToolCatalog` in `src/tools/index.ts` composes accounting and connection tools with
+the selected regional payroll module before shared registration in stdio and HTTP.
+Category exports contain accounting tools; regional modules own payroll tools.
+Only supported regional operations are registered. A company reader receives
+28 reads in NZ or 25 in AU; a company writer receives 54 company tools in NZ or
+51 in AU, with 26 mutations in either region. Connection access independently
+adds up to four tools. Upstream v0.0.16 registered all CRUD tools
 over stdio; this fork's default stdio context remains read-only. Authenticated HTTP
 clients with a mapped read-write company can use the full mutation catalog,
 subject to shared tenant/caller guards and actual Xero OAuth consent.

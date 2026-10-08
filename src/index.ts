@@ -8,8 +8,10 @@ import { loadRemoteConfig } from "./auth/remote-auth.js";
 import { configuredTenantIds, configuredWritableTenantIds, configuredTokenProvider } from "./clients/xero-client.js";
 import { prepareTokenStore } from "./auth/prepare-token-store.js";
 import { z } from "zod";
+import { configuredPayrollRegion } from "./payroll/region.js";
 
 const main = async () => {
+  configuredPayrollRegion();
   const transportMode = process.env.MCP_TRANSPORT ?? "stdio";
   if (transportMode === "http") {
     if (!process.env.XERO_TOKEN_FILE) throw new Error("Remote MCP requires durable OAuth mode");

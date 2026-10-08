@@ -46,25 +46,25 @@ it("derives MCP hints from explicit mutation access independently of names and r
   ]);
 });
 
-it("preserves the original CRUD category inventory alongside the added update", () => {
+it("keeps accounting CRUD inventory separate from the selected payroll module", () => {
   // Independent upstream inventory: category exports must not become runtime allowlists.
   expect(CreateTools.map(create => create().name).sort()).toEqual([
     "create-bank-transaction", "create-contact", "create-credit-note", "create-invoice",
     "create-item", "create-manual-journal", "create-payment", "create-quote",
-    "create-timesheet", "create-tracking-category", "create-tracking-options",
+    "create-tracking-category", "create-tracking-options",
   ]);
   expect(UpdateTools.map(create => create().name).sort()).toEqual([
-    "add-timesheet-line", "approve-timesheet", "code-bank-transaction", "revert-timesheet",
+    "code-bank-transaction",
     "update-bank-transaction", "update-contact", "update-credit-note", "update-invoice",
-    "update-item", "update-manual-journal", "update-quote", "update-timesheet-line", "update-tracking-category",
+    "update-item", "update-manual-journal", "update-quote", "update-tracking-category",
     "update-tracking-options",
   ]);
-  expect(DeleteTools.map(create => create().name)).toEqual(["delete-timesheet"]);
+  expect(DeleteTools.map(create => create().name)).toEqual([]);
 });
 
 it("registers every tool in the complete catalog once for full resource access", () => {
   const context: ToolContext = { access: { company: ["read", "write"], connection: ["read", "write"] } };
-  const definitions = ToolCatalog.map(create => create(context));
+  const definitions = ToolCatalog().map(create => create(context));
   const server = new McpServer({ name: "catalog-fixture", version: "1" });
   const registered = vi.spyOn(server, "registerTool");
   ToolFactory(server, context);

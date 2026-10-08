@@ -1,7 +1,8 @@
 # Xero OAuth scope coverage
 
-The catalog contains 58 tools: 28 company reads, 26 company mutations and four
-connection tools. MCP resource access, company permissions, Xero consent and
+The selected NZ catalog contains 58 tools: 28 company reads, 26 company mutations
+and four connection tools. AU contains 55: 25 company reads, the same 26 company
+mutations and four connection tools. Only the selected region is registered. MCP resource access, company permissions, Xero consent and
 Xero's own transaction/user restrictions all apply independently. Advertising a
 tool does not establish that the current Xero grant permits its endpoint.
 
@@ -20,7 +21,7 @@ new consent should use the granular scopes.
 | `list-items` | GET `/Items` | `accounting.invoices.read` **or** `accounting.settings.read` (or their manage scopes) |
 | `create-item`, `update-item` | PUT/POST `/Items` | `accounting.invoices` **or** `accounting.settings` |
 | `list-payments` | GET `/Payments` | `accounting.payments.read` |
-| `create-payment` | PUT `/Payments` | `accounting.payments` |
+| `create-payment` | POST `/Payments` | `accounting.payments` |
 | `get-bank-transaction`, `list-bank-transactions` | GET `/BankTransactions` and selected IDs | `accounting.banktransactions.read` |
 | `create-bank-transaction`, `update-bank-transaction` | PUT/POST `/BankTransactions` | `accounting.banktransactions` |
 | `code-bank-transaction` | GET `/BankTransactions/{id}`, GET `/Accounts`, POST `/BankTransactions/{id}`, verification GET | `accounting.banktransactions` **and** `accounting.settings.read` (or `accounting.settings`) |
@@ -38,6 +39,10 @@ new consent should use the granular scopes.
 | `list-payroll-leave-types` | NZ payroll GET `/LeaveTypes` | `payroll.settings.read` |
 | `get-timesheet`, `list-timesheets` | NZ payroll GET `/Timesheets` and selected IDs | `payroll.timesheets.read` |
 | `create-timesheet`, `add-timesheet-line`, `update-timesheet-line`, `approve-timesheet`, `revert-timesheet`, `delete-timesheet` | NZ payroll POST/PUT/DELETE `/Timesheets`, `/Lines`, `/Approve`, `/RevertToDraft` | `payroll.timesheets` |
+| `list-payroll-employees`, `list-payroll-employee-leave-balances` with AU selected | AU payroll GET `/Employees` and selected employee's LeaveBalances fields | `payroll.employees.read` |
+| `list-payroll-leave-types` with AU selected | AU payroll GET `/PayItems`, returning its LeaveTypes fields | `payroll.settings.read` |
+| `get-timesheet`, `list-timesheets` with AU selected | AU payroll 2.0 GET `/Timesheets` and selected IDs | `payroll.timesheets.read` |
+| `create-timesheet`, `add-timesheet-line`, `update-timesheet-line`, `approve-timesheet`, `revert-timesheet`, `delete-timesheet` with AU selected | AU payroll 2.0 POST/PUT/DELETE `/Timesheets`, `/Lines`, `/Approve`, `/RevertToDraft` | `payroll.timesheets` |
 | `begin-xero-connection`, `continue-xero-connection`, `get-xero-connection-status`, `confirm-xero-connection` | Existing owner-only PKCE flow and encrypted local state | Configured operator-approved scopes; `offline_access` is needed for durable refresh |
 
 Some mutation receipts optionally read `/Organisation` for a view link. That read
@@ -79,25 +84,27 @@ This consent enables access to invoice/bill/credit-note/quote/item data, payment
 bank transactions, journals, contacts, organisation settings and financial
 reports. Manage scopes can permit changes throughout their provider-defined
 resource families, including endpoints the MCP does not expose. Employee reads
-can include sensitive employment, tax and payment data. Payroll timesheet consent
-includes approval, reversion and deletion. Company and request write guards still
+can include sensitive employment, tax and payment data. NZ payroll timesheet
+consent includes approval, reversion and deletion; AU Timesheets 2.0 consent
+includes creation, line updates, approval, reversion and deletion. Company and request write guards still
 apply; a scope grant is not approval to perform any accounting or payroll write.
 
-The exposed payroll implementations use **Xero Payroll NZ**. Consent does not
-provide a NZ payroll subscription or make NZ endpoints work for an Australian or
-UK organisation. AU/UK SDK clients exist, but this catalog has no AU/UK payroll
-tools. No employee-write, payrun, payslip, attachment, bank-feed, asset, project,
+`XERO_PAYROLL_REGION` selects **NZ** (unset default) or **AU**. Consent does not
+provide a payroll subscription or change an organisation's country. The three NZ-only employee-leave detail/setup/period tools are not registered
+when AU is selected. See [payroll regional support](payroll-regions.md) for the full operation/schema
+matrix. No additional scopes were added to `supportedToolConsentScopes`; no
+employee-write, payrun, payslip, attachment, bank-feed, asset, project,
 practice-manager or OpenID scopes are required for the exposed catalog.
 
 Before a regional payroll release, review its supported-operation and scope
-matrix against this target. AU routing must check AU endpoint consent and reject
-unsupported operations before any NZ or API fallback; identical scope names do
-not establish identical regional operations.
+matrix against this target. AU routing checks its endpoint consent through the
+same resolver and rejects unsupported operations without NZ or API fallback;
+identical scope names do not establish identical regional operations.
 
 ## Errors and release sequence
 
-The shared tenant client checks known accounting/NZ-payroll endpoint scope
-alternatives before SDK transport. Static bearer setups without scope metadata
+The shared tenant client checks known accounting/NZ/AU-payroll endpoint scope
+alternatives before SDK or AU Timesheets 2.0 adapter transport. Static bearer setups without scope metadata
 remain provider-authoritative. An `insufficient_scope` response gets a fixed
 consent error instead of a credential failure; error responses never return
 credential-bearing envelopes. Token refresh keeps existing consent and cannot

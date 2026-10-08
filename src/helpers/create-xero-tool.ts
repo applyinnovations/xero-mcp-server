@@ -8,7 +8,7 @@ import { formatError } from "./format-error.js";
 
 export const CreateXeroTool =
   <Args extends ZodRawShapeCompat>(definition: Omit<ToolDefinition<Args>, "resource">) =>
-  CreateTool<ZodRawShapeCompat>(() => {
+  CreateTool<ZodRawShapeCompat>((context) => {
     const access = definition.access;
     return {
       ...definition,
@@ -20,7 +20,7 @@ export const CreateXeroTool =
           const execute = () => {
             const tenantId = z.string().uuid().parse(args.tenantId);
             if (access === "write") assertTenantWriteAccess(tenantId);
-            const client = createTenantClient(tenantId);
+            const client = (context.tenantClientFactory ?? createTenantClient)(tenantId);
             const invoke = definition.handler as ToolCallback<ZodRawShapeCompat>;
             return runWithXeroClient(client, () => invoke(args, extra));
           };

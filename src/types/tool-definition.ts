@@ -10,6 +10,7 @@ export type ToolAccess = "read" | "write";
 export type ToolResource = "company" | "connection";
 
 export interface ToolContext {
+  tenantClientFactory?: (tenantId: string) => import("../clients/xero-client.js").TenantXeroClient;
   access: Readonly<Record<ToolResource, readonly ToolAccess[]>>;
   subject?: string;
   onboarding?: XeroOnboarding;

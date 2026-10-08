@@ -8,6 +8,8 @@ import { ToolFactory } from "../tools/tool-factory.js";
 import { configuredOnboarding, XeroOnboarding, XeroOnboardingError } from "../auth/xero-onboarding.js";
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 
+import { selectPayrollModule } from "../payroll/module.js";
+
 function json(response: ServerResponse, status: number, body: unknown) {
   response.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store" });
   response.end(JSON.stringify(body));
@@ -25,6 +27,7 @@ async function requestBody(request: IncomingMessage): Promise<unknown> {
 }
 
 export function createRemoteServer(config: RemoteConfig, key?: JWTVerifyGetKey, onboarding: XeroOnboarding | undefined = configuredOnboarding(config)) {
+  const payroll = selectPayrollModule();
   const verify = createAccessContextVerifier(config, key);
   const resource = new URL(config.resource);
   const metadataPath = `/.well-known/oauth-protected-resource${resource.pathname}`;
@@ -83,7 +86,7 @@ export function createRemoteServer(config: RemoteConfig, key?: JWTVerifyGetKey, 
               connection: connector ? ["read", "write"] : [],
             },
             subject: context.subject, onboarding,
-          });
+          }, payroll);
           const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
           let closed = false;
           const close = () => { if (!closed) { closed = true; void mcp.close().catch(() => {}); } };

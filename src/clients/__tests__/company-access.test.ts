@@ -140,7 +140,7 @@ it("reports every company mutation's authentication failure as an MCP error with
     idempotencyKey: writable, changes: [{ lineItemId: writable, accountCode: "400" }],
   };
   let checked = 0;
-  for (const create of ToolCatalog) {
+  for (const create of ToolCatalog()) {
     const tool = create();
     if (tool.resource !== "company" || tool.access !== "write") continue;
     denied.mockClear();
@@ -191,7 +191,7 @@ it.each(["forbidden", "missing", "healthy"] as const)("preserves confirmed mutat
   };
   for (const [name, method] of operations) {
     const mutation = vi.spyOn(AccountingApi.prototype, method).mockResolvedValue(response as Awaited<ReturnType<AccountingApi[typeof method]>>);
-    const tool = ToolCatalog.map(create => create()).find(tool => tool.name === name)!;
+    const tool = ToolCatalog().map(create => create()).find(tool => tool.name === name)!;
     link.mockClear();
     const args = z.object(tool.schema).parse({ ...input, type: "ACCREC" });
     const result = await request(() => tool.handler(args, {} as never));
