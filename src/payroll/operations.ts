@@ -3,13 +3,15 @@ import { getClientHeaders } from "../helpers/get-client-headers.js";
 import type { Employee as NzEmployee } from "../types/payroll-nz-types.js";
 import type { Employee as AuEmployee } from "xero-node/dist/gen/model/payroll-au/employee.js";
 import type { Timesheet as NzTimesheet } from "xero-node/dist/gen/model/payroll-nz/timesheet.js";
-import type { Timesheet as AuTimesheet } from "xero-node/dist/gen/model/payroll-au/timesheet.js";
+import type { AuV2Timesheet, AuV2TimesheetLine } from "./au-timesheets-v2.js";
+import type { TimesheetLine as NzTimesheetLine } from "xero-node/dist/gen/model/payroll-nz/timesheetLine.js";
 import type { LeaveType as AuLeaveType } from "xero-node/dist/gen/model/payroll-au/leaveType.js";
 import type { LeaveType, EmployeeLeaveBalance } from "../types/payroll-nz-types.js";
-import { auTimesheetSchema, nzTimesheetSchema } from "./timesheet-schema.js";
+import { auTimesheetSchema, auTimesheetLineSchema, nzTimesheetSchema } from "./timesheet-schema.js";
 
 export type PayrollEmployee = NzEmployee | AuEmployee;
-export type PayrollTimesheet = NzTimesheet | AuTimesheet;
+export type PayrollTimesheet = NzTimesheet | AuV2Timesheet;
+export type PayrollTimesheetLine = NzTimesheetLine | AuV2TimesheetLine;
 export type PayrollLeaveType = LeaveType | AuLeaveType;
 
 export async function payrollEmployees(): Promise<PayrollEmployee[]> {
@@ -25,14 +27,14 @@ export async function payrollEmployees(): Promise<PayrollEmployee[]> {
 export async function payrollTimesheets(): Promise<PayrollTimesheet[]> {
   await xeroClient.authenticate();
   if (xeroClient.payrollRegion === "AU") {
-    return (await xeroClient.payrollAUApi.getTimesheets(xeroClient.tenantId)).body.timesheets ?? [];
+    return xeroClient.payrollAUv2Api.getTimesheets();
   }
   return (await xeroClient.payrollNZApi.getTimesheets(xeroClient.tenantId, undefined, undefined)).body.timesheets ?? [];
 }
 
 export async function payrollTimesheet(id: string): Promise<PayrollTimesheet | null> {
   await xeroClient.authenticate();
-  if (xeroClient.payrollRegion === "AU") return (await xeroClient.payrollAUApi.getTimesheet(xeroClient.tenantId, id)).body.timesheet ?? null;
+  if (xeroClient.payrollRegion === "AU") return xeroClient.payrollAUv2Api.getTimesheet(id);
   return (await xeroClient.payrollNZApi.getTimesheet(xeroClient.tenantId, id)).body.timesheet ?? null;
 }
 
@@ -41,14 +43,37 @@ export async function createPayrollTimesheet(input: unknown): Promise<PayrollTim
   if (xeroClient.payrollRegion === "AU") {
     const timesheet = auTimesheetSchema.parse(input);
     await xeroClient.authenticate();
-    const created = (await xeroClient.payrollAUApi.createTimesheet(xeroClient.tenantId, [timesheet])).body.timesheets;
-    if (created?.some(item => item.validationErrors?.length)) throw new Error("Xero AU rejected the timesheet with validation errors");
-    if (created?.length !== 1 || !created[0].timesheetID) throw new Error("Xero AU did not return a single created timesheet ID");
-    return created[0];
+    return xeroClient.payrollAUv2Api.createTimesheet(timesheet);
   }
   const timesheet = nzTimesheetSchema.parse(input);
   await xeroClient.authenticate();
   return (await xeroClient.payrollNZApi.createTimesheet(xeroClient.tenantId, timesheet)).body.timesheet ?? null;
+}
+
+export async function approvePayrollTimesheet(id: string): Promise<PayrollTimesheet | null> {
+  if (xeroClient.payrollRegion === "AU") return xeroClient.payrollAUv2Api.approveTimesheet(id);
+  await xeroClient.authenticate();
+  return (await xeroClient.payrollNZApi.approveTimesheet(xeroClient.tenantId, id)).body.timesheet ?? null;
+}
+export async function revertPayrollTimesheet(id: string): Promise<PayrollTimesheet | null> {
+  if (xeroClient.payrollRegion === "AU") return xeroClient.payrollAUv2Api.revertTimesheet(id);
+  await xeroClient.authenticate();
+  return (await xeroClient.payrollNZApi.revertTimesheet(xeroClient.tenantId, id)).body.timesheet ?? null;
+}
+export async function deletePayrollTimesheet(id: string): Promise<void> {
+  if (xeroClient.payrollRegion === "AU") return xeroClient.payrollAUv2Api.deleteTimesheet(id);
+  await xeroClient.authenticate();
+  await xeroClient.payrollNZApi.deleteTimesheet(xeroClient.tenantId, id);
+}
+export async function addPayrollTimesheetLine(id: string, input: NzTimesheetLine): Promise<PayrollTimesheetLine | null> {
+  if (xeroClient.payrollRegion === "AU") return xeroClient.payrollAUv2Api.createTimesheetLine(id, auTimesheetLineSchema.parse(input));
+  await xeroClient.authenticate();
+  return (await xeroClient.payrollNZApi.createTimesheetLine(xeroClient.tenantId, id, input)).body.timesheetLine ?? null;
+}
+export async function updatePayrollTimesheetLine(id: string, lineId: string, input: NzTimesheetLine): Promise<PayrollTimesheetLine | null> {
+  if (xeroClient.payrollRegion === "AU") return xeroClient.payrollAUv2Api.updateTimesheetLine(id, lineId, auTimesheetLineSchema.parse(input));
+  await xeroClient.authenticate();
+  return (await xeroClient.payrollNZApi.updateTimesheetLine(xeroClient.tenantId, id, lineId, input)).body.timesheetLine ?? null;
 }
 
 export async function payrollLeaveTypes(): Promise<PayrollLeaveType[]> {
@@ -73,7 +98,7 @@ export async function payrollLeaveBalances(employeeId: string): Promise<Employee
 }
 
 export function timesheetHours(value: PayrollTimesheet): number | undefined {
-  return (value as NzTimesheet).totalHours ?? (value as AuTimesheet).hours;
+  return value.totalHours;
 }
 export function employeePhone(value: PayrollEmployee): string | undefined {
   return (value as NzEmployee).phoneNumber ?? (value as AuEmployee).phone;

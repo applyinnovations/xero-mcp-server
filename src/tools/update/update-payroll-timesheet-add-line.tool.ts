@@ -2,23 +2,24 @@ import {
   TimesheetLine,
 } from "xero-node/dist/gen/model/payroll-nz/timesheetLine.js";
 import { z } from "zod";
+import { auTimesheetLineSchema } from "../../payroll/timesheet-schema.js";
 
 import {
   updateXeroPayrollTimesheetAddLine,
 } from "../../handlers/update-xero-payroll-timesheet-add-line.handler.js";
 import { CreatePayrollTool } from "../../helpers/create-payroll-tool.js";
 
-const AddTimesheetLineTool = CreatePayrollTool({
+const AddTimesheetLineTool = CreatePayrollTool(region => ({
   name: "add-timesheet-line",
   description: `Add a new timesheet line to an existing payroll timesheet in Xero.`,
   access: "write",
   schema: {
     timesheetID: z.string().describe("The ID of the timesheet to update."),
-    timesheetLine: z.object({
+    timesheetLine: (region === "AU" ? auTimesheetLineSchema : z.object({
       earningsRateID: z.string().describe("The ID of the earnings rate."),
       numberOfUnits: z.number().describe("The number of units for the timesheet line."),
       date: z.string().describe("The date for the timesheet line (YYYY-MM-DD)."),
-    }).describe("The details of the timesheet line to add."),
+    })).describe("The details of the timesheet line to add (AU supports optional trackingItemID)."),
   },
   handler: async (params: { timesheetID: string; timesheetLine: TimesheetLine }) => {
     const { timesheetID, timesheetLine } = params;
@@ -47,6 +48,6 @@ const AddTimesheetLineTool = CreatePayrollTool({
       ],
     };
   },
-});
+}));
 
 export default AddTimesheetLineTool;

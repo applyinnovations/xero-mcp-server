@@ -11,8 +11,7 @@ export function configuredPayrollRegion(): PayrollRegion {
 
 export const nzOnlyPayrollTools = new Set([
   "list-payroll-employee-leave", "list-payroll-employee-leave-types",
-  "list-payroll-leave-periods", "add-timesheet-line", "update-timesheet-line",
-  "approve-timesheet", "revert-timesheet", "delete-timesheet",
+  "list-payroll-leave-periods",
 ]);
 
 export function assertPayrollOperation(region: PayrollRegion, tool: string): void {

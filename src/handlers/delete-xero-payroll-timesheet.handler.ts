@@ -1,17 +1,6 @@
-import { assertPayrollOperation } from "../payroll/region.js";
-import { xeroClient } from "../clients/xero-client.js";
+import { deletePayrollTimesheet } from "../payroll/operations.js";
 import { formatError } from "../helpers/format-error.js";
 import { XeroClientResponse } from "../types/tool-response.js";
-
-async function deleteTimesheet(timesheetID: string): Promise<boolean> {
-  assertPayrollOperation(xeroClient.payrollRegion, "delete-timesheet");
-  await xeroClient.authenticate();
-
-  // Call the deleteTimesheet endpoint from the PayrollNZApi
-  await xeroClient.payrollNZApi.deleteTimesheet(xeroClient.tenantId, timesheetID);
-
-  return true;
-}
 
 /**
  * Delete an existing payroll timesheet in Xero
@@ -20,7 +9,7 @@ export async function deleteXeroPayrollTimesheet(timesheetID: string): Promise<
   XeroClientResponse<boolean>
 > {
   try {
-    await deleteTimesheet(timesheetID);
+    await deletePayrollTimesheet(timesheetID);
 
     return {
       result: true,

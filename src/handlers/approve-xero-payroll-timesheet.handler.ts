@@ -1,31 +1,15 @@
-import { assertPayrollOperation } from "../payroll/region.js";
-import { Timesheet } from "xero-node/dist/gen/model/payroll-nz/timesheet.js";
-
-import { xeroClient } from "../clients/xero-client.js";
+import { approvePayrollTimesheet, type PayrollTimesheet } from "../payroll/operations.js";
 import { formatError } from "../helpers/format-error.js";
 import { XeroClientResponse } from "../types/tool-response.js";
-
-async function approveTimesheet(timesheetID: string): Promise<Timesheet | null> {
-  assertPayrollOperation(xeroClient.payrollRegion, "approve-timesheet");
-  await xeroClient.authenticate();
-
-  // Call the approveTimesheet endpoint from the PayrollNZApi
-  const approvedTimesheet = await xeroClient.payrollNZApi.approveTimesheet(
-    xeroClient.tenantId,
-    timesheetID,
-  );
-
-  return approvedTimesheet.body.timesheet ?? null;
-}
 
 /**
  * Approve a payroll timesheet in Xero
  */
 export async function approveXeroPayrollTimesheet(timesheetID: string): Promise<
-  XeroClientResponse<Timesheet | null>
+  XeroClientResponse<PayrollTimesheet | null>
 > {
   try {
-    const approvedTimesheet = await approveTimesheet(timesheetID);
+    const approvedTimesheet = await approvePayrollTimesheet(timesheetID);
 
     return {
       result: approvedTimesheet,

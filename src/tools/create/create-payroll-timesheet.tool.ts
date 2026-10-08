@@ -8,7 +8,7 @@ import { CreatePayrollTool } from "../../helpers/create-payroll-tool.js";
 const CreatePayrollTimesheetTool = CreatePayrollTool(region => ({
   name: "create-timesheet",
   description: `Create a new payroll timesheet in Xero.
-NZ requires payrollCalendarID and dated scalar-unit lines. AU omits payrollCalendarID and uses daily numberOfUnits arrays, including zero-unit days, for the full inclusive date range.`,
+NZ and AU Timesheets 2.0 require payrollCalendarID and dated scalar-unit lines. AU also accepts trackingItemID. AU Timesheets 1.0 daily unit arrays are not accepted.`,
   access: "write",
   schema: timesheetShape(region),
   handler: async params => {

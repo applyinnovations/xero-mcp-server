@@ -8,24 +8,28 @@ export const nzTimesheetShape = {
   timesheetLines: z.array(z.object({ earningsRateID: z.string(), numberOfUnits: z.number(), date }).strict()).optional(),
 };
 export const auTimesheetShape = {
-  ...common,
+  employeeID: z.string().uuid(), startDate: date, endDate: date, payrollCalendarID: z.string().uuid(),
   timesheetLines: z.array(z.object({
-    earningsRateID: z.string(), trackingItemID: z.string().optional(),
-    numberOfUnits: z.array(z.number()).describe("One entry per day, in order from startDate through endDate, including zero-unit days"),
+    earningsRateID: z.string().uuid(), trackingItemID: z.string().uuid().optional(),
+    numberOfUnits: z.number().finite(), date,
   }).strict()).optional(),
 };
 export const nzTimesheetSchema = z.object(nzTimesheetShape).strict();
+function validDate(value: string): boolean {
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === value;
+}
+export const auTimesheetLineSchema = z.object({
+  date: date.refine(validDate, "Use a valid calendar date"), earningsRateID: z.string().uuid(),
+  numberOfUnits: z.number().finite(), trackingItemID: z.string().uuid().optional(),
+}).strict();
 export const auTimesheetSchema = z.object(auTimesheetShape).strict().superRefine((value, ctx) => {
-  const start = Date.parse(value.startDate), end = Date.parse(value.endDate);
-  const days = (end - start) / 86_400_000 + 1;
-  if (!Number.isInteger(days) || days < 1 ||
-      new Date(start).toISOString().slice(0, 10) !== value.startDate ||
-      new Date(end).toISOString().slice(0, 10) !== value.endDate) {
+  if (!validDate(value.startDate) || !validDate(value.endDate) || value.startDate > value.endDate) {
     ctx.addIssue({ code: "custom", message: "AU timesheet requires a valid inclusive date range" });
     return;
   }
   value.timesheetLines?.forEach((line, index) => {
-    if (line.numberOfUnits.length !== days) ctx.addIssue({ code: "custom", path: ["timesheetLines", index, "numberOfUnits"], message: "AU numberOfUnits must contain one entry per day in the timesheet period" });
+    if (!validDate(line.date) || line.date < value.startDate || line.date > value.endDate) ctx.addIssue({ code: "custom", path: ["timesheetLines", index, "date"], message: "AU timesheet line date must be within the timesheet period" });
   });
 });
 export function timesheetShape(region: PayrollRegion) {
