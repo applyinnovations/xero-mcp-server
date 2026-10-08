@@ -1,7 +1,8 @@
 # Xero OAuth scope coverage
 
-The catalog contains 58 tools: 28 company reads, 26 company mutations and four
-connection tools. MCP resource access, company permissions, Xero consent and
+The selected NZ catalog contains 58 tools: 28 company reads, 26 company mutations
+and four connection tools. AU contains 55: 25 company reads, the same 26 company
+mutations and four connection tools. Only the selected region is registered. MCP resource access, company permissions, Xero consent and
 Xero's own transaction/user restrictions all apply independently. Advertising a
 tool does not establish that the current Xero grant permits its endpoint.
 
@@ -89,10 +90,8 @@ includes creation, line updates, approval, reversion and deletion. Company and r
 apply; a scope grant is not approval to perform any accounting or payroll write.
 
 `XERO_PAYROLL_REGION` selects **NZ** (unset default) or **AU**. Consent does not
-provide a payroll subscription or change an organisation's country. The three
-NZ-specific employee leave detail/setup/period operations return explicit
-unsupported errors in AU. UK remains unsupported.
-See [payroll regional support](payroll-regions.md) for the full operation/schema
+provide a payroll subscription or change an organisation's country. The three NZ-only employee-leave detail/setup/period tools are not registered
+when AU is selected. See [payroll regional support](payroll-regions.md) for the full operation/schema
 matrix. No additional scopes were added to `supportedToolConsentScopes`; no
 employee-write, payrun, payslip, attachment, bank-feed, asset, project,
 practice-manager or OpenID scopes are required for the exposed catalog.

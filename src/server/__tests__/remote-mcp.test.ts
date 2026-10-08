@@ -197,3 +197,91 @@ it("performs a direct coding call through signed-user request registration witho
     expect(rejected.isError).toBe(true); expect(rejected.structuredContent).toMatchObject({ outcome: "rejected", httpStatus: 403 });
   } finally { await client.close(); await endpoint.close(); }
 });
+
+it.each(["NZ", "AU"] as const)(
+  "keeps the %s HTTP payroll catalog bound across requests and omits unsupported operations",
+  async (region) => {
+    vi.stubEnv("XERO_PAYROLL_REGION", region);
+    vi.stubEnv("XERO_ALLOWED_TENANT_IDS", tenantA);
+    vi.stubEnv(
+      "XERO_TENANT_ACCESS_JSON",
+      JSON.stringify({ [tenantA]: "read-write" }),
+    );
+    mockGrant(
+      "payroll.employees.read payroll.settings.read payroll.timesheets",
+    );
+    const provider = vi.mocked(DurableOAuthProvider.prototype.getTokenSet);
+    const authenticate = vi
+      .spyOn(TenantXeroClient.prototype, "authenticate")
+      .mockRejectedValue(new Error("Must not authenticate"));
+    const endpoint = await listening();
+    vi.stubEnv("XERO_PAYROLL_REGION", region === "NZ" ? "AU" : "NZ");
+    try {
+      for (const writable of [false, true]) {
+        const client = new Client({
+          name: "regional-http-fixture",
+          version: "1",
+        });
+        try {
+          await client.connect(
+            new StreamableHTTPClientTransport(endpoint.url, {
+              requestInit: {
+                headers: {
+                  Authorization: `Bearer ${await token(writable ? { azp: "fixture-client" } : {})}`,
+                },
+              },
+            }),
+          );
+          const tools = (await client.listTools()).tools;
+          expect(tools).toHaveLength(
+            region === "NZ" ? (writable ? 54 : 28) : writable ? 51 : 25,
+          );
+          expect(new Set(tools.map((t) => t.name)).size).toBe(tools.length);
+          expect(
+            tools.filter((t) => !t.annotations?.readOnlyHint),
+          ).toHaveLength(writable ? 26 : 0);
+          if (writable) {
+            const input = tools.find(
+              (t) => t.name === "create-timesheet",
+            )!.inputSchema;
+            const lines = input.properties!.timesheetLines as {
+              items: { properties: Record<string, unknown> };
+            };
+            expect(
+              Object.hasOwn(lines.items.properties, "trackingItemID"),
+            ).toBe(region === "AU");
+          }
+          const balances = tools.find(
+            (t) => t.name === "list-payroll-employee-leave-balances",
+          )!;
+          expect(balances.description).toContain(
+            region === "NZ" ? "New Zealand" : "Australian",
+          );
+          for (const name of [
+            "list-payroll-employee-leave",
+            "list-payroll-employee-leave-types",
+            "list-payroll-leave-periods",
+          ]) {
+            if (region === "NZ")
+              expect(tools.map((t) => t.name)).toContain(name);
+            else {
+              expect(tools.map((t) => t.name)).not.toContain(name);
+              expect(
+                await client.callTool({
+                  name,
+                  arguments: { tenantId: tenantA, employeeId: tenantA },
+                }),
+              ).toHaveProperty("isError", true);
+            }
+          }
+        } finally {
+          await client.close();
+        }
+      }
+      expect(authenticate).not.toHaveBeenCalled();
+      expect(provider).not.toHaveBeenCalled();
+    } finally {
+      await endpoint.close();
+    }
+  },
+);

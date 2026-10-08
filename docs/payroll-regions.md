@@ -2,8 +2,9 @@
 
 Set `XERO_PAYROLL_REGION=NZ` or `XERO_PAYROLL_REGION=AU`. The value is case
 sensitive; unset defaults to NZ for existing deployments. Empty values, UK,
-country names and URLs are rejected. Startup and tool construction validate the
-configuration. Each tenant client snapshots the selection and rejects calls to
+country names and URLs are rejected. Startup validates the configuration after environment loading. The shared tool
+factory injects either the NZ or AU module before registration, and binds
+invocation clients to that selection and rejects calls to
 any other payroll API, including UK. There is no automatic regional fallback.
 This setting affects payroll only; accounting endpoints are unchanged.
 
@@ -20,20 +21,27 @@ variable cannot change the organisation's country, subscription or OAuth grant.
 | `list-timesheets`, `get-timesheet` | NZ Timesheets | AU Timesheets 2.0 (`totalHours`, dated scalar-unit lines) |
 | `create-timesheet` | One NZ timesheet, payroll calendar, dated scalar-unit lines | One AU 2.0 timesheet, payroll calendar, dated scalar-unit lines, optional tracking item |
 | `list-payroll-leave-types` | LeaveTypes | PayItems.LeaveTypes (AU fields, including CurrentRecord) |
-| `list-payroll-employee-leave-balances` | EmployeeLeaveBalances | Requested Employee.LeaveBalances; LeaveName and NumberOfUnits displayed as name and balance |
-| `list-payroll-employee-leave`, `list-payroll-employee-leave-types`, `list-payroll-leave-periods` | Existing NZ behavior | Unsupported by these tools |
+| `list-payroll-employee-leave-balances` | EmployeeLeaveBalances | Requested Employee.LeaveBalances; AU leaveName and numberOfUnits retained |
+| `list-payroll-employee-leave`, `list-payroll-employee-leave-types`, `list-payroll-leave-periods` | Existing NZ behavior | Not registered |
 | `add-timesheet-line`, `update-timesheet-line`, `approve-timesheet`, `revert-timesheet`, `delete-timesheet` | Existing NZ behavior | AU Timesheets 2.0 line and lifecycle endpoints |
 
-Unsupported tools remain discoverable under existing access policy, explicitly
-advertise that they are unsupported in AU, and return MCP `isError: true` before
-authentication or payroll transport. This describes this server's support, not
-an assertion that every related workflow is absent from the AU API. The three
-employee-leave detail/setup/period tools retain their NZ contracts; no equivalent
-AU mapping has been verified for those operations. AU leave settings and balances
-are supported through the independently mapped reads above.
+The NZ module registers 14 payroll tools (8 reads and 6 mutations); AU registers
+11 (5 reads and the same 6 mutations). The three NZ employee-leave detail/setup/period
+tools are absent from AU tools/list and cannot be called. Unknown tool calls stop
+at MCP registration without authentication or provider requests. This describes
+this server's support; it does not claim those workflows are absent from Xero's AU API.
+
+With full resource access the total catalog is NZ 58 / AU 55. Company-only access
+exposes NZ 54 / AU 51 (reads 28 / 25, mutations 26 in both); connection access adds
+up to four tools independently. Accounting tools and access annotations are preserved.
+Restart the server after changing the region; HTTP requests use the module selected
+at server construction. Changing the environment in a running process does not
+change either its advertised contracts or invocation clients.
 
 List tools preserve the existing single-request behavior and may return only the
-provider's first page. AU payroll employees display Phone; NZ displays PhoneNumber.
+provider's first page. AU tools return JSON text using AU SDK field names (phone, leaveName, numberOfUnits);
+NZ retains its existing text presentation and NZ fields. AU employee output selects
+identity/contact/employment fields and does not dump financial/tax fields.
 NZ engagement type is not inferred for AU employees. Missing regional fields are
 not synthesized from unrelated fields.
 
@@ -66,7 +74,7 @@ AU responses use lowercase `timesheets`, `timesheet` and `timesheetLine` envelop
 `totalHours` and `problem`. The typed adapter validates receipts and reports
 provider problems, malformed responses or mismatched identifiers as errors.
 DELETE requires an OK response envelope and has no resource receipt. NZ retains
-its existing SDK schema and behavior. No payload coercion or retry against AU 1.0,
+its existing SDK models and text behavior in its own client, handlers, schemas and tools. No payload coercion or retry against AU 1.0,
 NZ or another region is attempted.
 
 ## OAuth requirements

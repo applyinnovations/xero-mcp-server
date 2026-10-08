@@ -48,7 +48,7 @@ it("marks every company read's authentication failure as an MCP error without ex
     statusCode: 401, body: { Detail: "insufficient_scope" }, request: { headers: { authorization: "Bearer SECRET_TOKEN" } },
   } }));
   let checked = 0;
-  for (const create of ToolCatalog) {
+  for (const create of ToolCatalog()) {
     const tool = create();
     if (tool.resource !== "company" || tool.access !== "read" || tool.name === "list-tenants") continue;
     const response = await runWithTenantPermissions([tenantId], () => tool.handler({ tenantId, page: 1,

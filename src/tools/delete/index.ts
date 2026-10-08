@@ -1,5 +1,2 @@
-import DeletePayrollTimesheetTool from "./delete-payroll-timesheet.tool.js";
-
-export const DeleteTools = [
-  DeletePayrollTimesheetTool
-];
+import type { ToolBuilder } from "../../types/tool-definition.js";
+export const DeleteTools: readonly ToolBuilder[] = [];

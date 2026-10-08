@@ -6,8 +6,7 @@ import { z } from "zod";
 import { DurableOAuthProvider } from "../auth/oauth-provider.js";
 import { EncryptedTokenStore } from "../auth/token-store.js";
 import { assertXeroEndpointConsent, compatibleXeroScopes, missingXeroConsent } from "../auth/xero-scopes.js";
-import { configuredPayrollRegion } from "../payroll/region.js";
-import { PayrollAuTimesheetsV2Api } from "../payroll/au-timesheets-v2.js";
+import { configuredPayrollRegion, type PayrollRegion } from "../payroll/region.js";
 
 dotenv.config();
 
@@ -18,19 +17,11 @@ export interface XeroTokenProvider {
 interface SdkRequest { method?: string; url?: string; headers?: Record<string, unknown> }
 
 export class TenantXeroClient extends XeroClient {
-  public readonly payrollRegion = configuredPayrollRegion();
-  public readonly payrollAUv2Api = new PayrollAuTimesheetsV2Api(async (method, path) => {
-    await this.authenticate();
-    const headers = { "xero-tenant-id": this.tenantId };
-    await this.assertRequestAccess({ method, headers }, "payrollAU", path, "AU");
-    const tokens = await (this.tokens ??= this.provider.getTokenSet());
-    return { ...headers, Authorization: `Bearer ${tokens.access_token}` };
-  });
   private tokens?: Promise<TokenSetParameters>;
   private authentication?: Promise<void>;
   private shortCode?: string;
 
-  constructor(public readonly tenantId: string, private readonly provider: XeroTokenProvider) {
+  constructor(public readonly tenantId: string, private readonly provider: XeroTokenProvider, public readonly payrollRegion: PayrollRegion = configuredPayrollRegion()) {
     super();
     z.string().uuid().parse(tenantId);
     // The locked SDK calls default authentication after merging caller headers and
@@ -49,6 +40,14 @@ export class TenantXeroClient extends XeroClient {
         if (api === this.payrollAUApi && path?.split("/")[1] === "Timesheets") throw new Error("AU Timesheets 1.0 is disabled; use the AU Timesheets 2.0 adapter");
       };
     }
+  }
+
+  async authorizePayrollRequest(region: PayrollRegion, method: string, path: string): Promise<Record<string, string>> {
+    await this.authenticate();
+    const headers = { "xero-tenant-id": this.tenantId };
+    await this.assertRequestAccess({ method, headers }, `payroll${region}`, path, region);
+    const tokens = await (this.tokens ??= this.provider.getTokenSet());
+    return { ...headers, Authorization: `Bearer ${tokens.access_token}` };
   }
 
   // Both SDK APIs and the narrow AU v2 adapter use this same authorization gate.
@@ -150,9 +149,9 @@ export function configuredTenantIds(): string[] {
   return ids.map((id) => z.string().uuid().parse(id.trim()));
 }
 
-export function createTenantClient(tenantId: string): TenantXeroClient {
+export function createTenantClient(tenantId: string, region?: PayrollRegion): TenantXeroClient {
   if (!effectiveTenantIds().includes(tenantId)) throw new Error("Selected tenant is not allowed");
-  return new TenantXeroClient(tenantId, configuredTokenProvider());
+  return new TenantXeroClient(tenantId, configuredTokenProvider(), region);
 }
 
 export function configuredTokenProvider(): XeroTokenProvider {
