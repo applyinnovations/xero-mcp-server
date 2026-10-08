@@ -18,6 +18,7 @@ const ListContactGroupsTool = CreateXeroTool({
     
     if (response.error !== null) {
       return {
+        isError: true,
         content: [
           {
             type: "text" as const,

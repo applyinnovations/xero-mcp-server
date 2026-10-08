@@ -11,6 +11,7 @@ const ListPayrollLeaveTypesTool = CreateXeroTool({
     const response = await listXeroPayrollLeaveTypes();
     if (response.isError) {
       return {
+        isError: true,
         content: [
           {
             type: "text" as const,

@@ -45,7 +45,8 @@ export function xeroErrorDetails(error: unknown): { httpStatus?: number; provide
   return { ...(httpStatus !== undefined ? { httpStatus,
     // Rebuild only the allowed provider response. A generic Error with an attached
     // status must not expose its arbitrary message, request or headers.
-    providerMessage: formatError({ response: { statusCode: httpStatus, body } }) } : {}),
+    providerMessage: formatError({ response: { statusCode: httpStatus, body,
+      ...(hasInsufficientScope(body, response?.headers) ? { headers: { "www-authenticate": 'Bearer error="insufficient_scope"' } } : {}) } }) } : {}),
     validationMessages: xeroValidationMessages(body) };
 }
 
@@ -58,6 +59,7 @@ interface XeroSdkProblem {
 interface XeroSdkError {
   response: {
     statusCode: number;
+    headers?: unknown;
     body?: {
       httpStatusCode?: string;
       problem?: XeroSdkProblem;
@@ -73,7 +75,15 @@ function isXeroSdkError(error: unknown): error is XeroSdkError {
   return typeof (response as { statusCode?: unknown }).statusCode === "number";
 }
 
-function formatHttpStatus(status: number): string {
+function hasInsufficientScope(body: unknown, headers: unknown): boolean {
+  const value = object(body), problem = object(value?.problem), responseHeaders = object(headers);
+  const challenge = Object.entries(responseHeaders ?? {}).find(([name]) => name.toLowerCase() === "www-authenticate")?.[1];
+  return [value?.Detail, value?.detail, value?.error, value?.error_description, problem?.detail, problem?.title, challenge]
+    .some(field => typeof field === "string" && /\binsufficient_scope\b/i.test(field));
+}
+
+function formatHttpStatus(status: number, insufficientScope = false): string {
+  if ((status === 401 || status === 403) && insufficientScope) return "Xero OAuth consent is missing required endpoint scopes. Token refresh cannot add scopes; request owner-approved consent renewal before retrying.";
   switch (status) {
     case 401:
       return "Authentication failed. Please check your Xero credentials.";
@@ -102,7 +112,7 @@ export function formatError(error: unknown): string {
     const detail = safeMessage(error.response?.data?.Detail);
 
     if (status !== undefined) {
-      const mapped = formatHttpStatus(status);
+      const mapped = formatHttpStatus(status, hasInsufficientScope(error.response?.data, error.response?.headers));
       if (mapped) return mapped;
     }
     return detail || "An error occurred while communicating with Xero.";
@@ -111,7 +121,7 @@ export function formatError(error: unknown): string {
   const parsed = parsedError(error);
   if (isXeroSdkError(parsed)) {
     const status = parsed.response.statusCode;
-    const mapped = formatHttpStatus(status);
+    const mapped = formatHttpStatus(status, hasInsufficientScope(parsed.response.body, parsed.response.headers));
     if (mapped) return mapped;
 
     const body = parsed.response.body;

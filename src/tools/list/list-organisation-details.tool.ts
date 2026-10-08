@@ -11,6 +11,7 @@ const ListOrganisationDetailsTool = CreateXeroTool({
     const response = await listXeroOrganisationDetails();
     if (response.error !== null) {
       return {
+        isError: true,
         content: [
           {
             type: "text" as const,

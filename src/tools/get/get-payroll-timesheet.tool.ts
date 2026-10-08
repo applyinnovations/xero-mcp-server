@@ -19,6 +19,7 @@ This provides details such as the timesheet ID, employee ID, start and end dates
 
     if (response.isError) {
       return {
+        isError: true,
         content: [
           {
             type: "text" as const,

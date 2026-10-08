@@ -35,6 +35,7 @@ If they want the next page, call this tool again with the next page number, modi
 
     if (response.isError) {
       return {
+        isError: true,
         content: [
           {
             type: "text" as const,

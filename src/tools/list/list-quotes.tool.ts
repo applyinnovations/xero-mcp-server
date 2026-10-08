@@ -18,6 +18,7 @@ const ListQuotesTool = CreateXeroTool({
     const response = await listXeroQuotes(page, contactId, quoteNumber);
     if (response.error !== null) {
       return {
+        isError: true,
         content: [
           {
             type: "text" as const,

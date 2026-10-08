@@ -16,6 +16,7 @@ const ListPayrollLeavePeriodsToolTool = CreateXeroTool({
     const response = await listXeroPayrollLeavePeriods(employeeId, startDate, endDate);
     if (response.isError) {
       return {
+        isError: true,
         content: [
           {
             type: "text" as const,

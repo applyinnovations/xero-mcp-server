@@ -5,6 +5,7 @@ import { Organisation, TokenSet, TokenSetParameters, XeroClient } from "xero-nod
 import { z } from "zod";
 import { DurableOAuthProvider } from "../auth/oauth-provider.js";
 import { EncryptedTokenStore } from "../auth/token-store.js";
+import { assertXeroEndpointConsent, compatibleXeroScopes, missingXeroConsent } from "../auth/xero-scopes.js";
 
 dotenv.config();
 
@@ -12,7 +13,7 @@ export interface XeroTokenProvider {
   getTokenSet(): Promise<TokenSetParameters>;
 }
 
-interface SdkRequest { method?: string; headers?: Record<string, unknown> }
+interface SdkRequest { method?: string; url?: string; headers?: Record<string, unknown> }
 
 export class TenantXeroClient extends XeroClient {
   private tokens?: Promise<TokenSetParameters>;
@@ -34,15 +35,25 @@ export class TenantXeroClient extends XeroClient {
         const headers = Object.entries(request.headers ?? {}).filter(([name]) => name.toLowerCase() === "xero-tenant-id");
         if (headers.length !== 1 || headers[0][1] !== this.tenantId) throw new Error("Xero request tenant must match the selected tenant");
         if (!effectiveTenantIds().includes(this.tenantId)) throw new Error("Selected tenant is not allowed");
-        if (!["GET", "HEAD", "OPTIONS"].includes((request.method ?? "").toUpperCase())) assertTenantWriteAccess(this.tenantId);
+        const read = ["GET", "HEAD", "OPTIONS"].includes((request.method ?? "").toUpperCase());
+        if (!read) assertTenantWriteAccess(this.tenantId);
+        const domain = api === this.accountingApi ? "accounting" : api === this.payrollNZApi ? "payrollNZ" : undefined;
+        if (domain && request.url) {
+          const tokens = await (this.tokens ??= this.provider.getTokenSet());
+          const path = new URL(request.url).pathname.slice(new URL(api.basePath).pathname.replace(/\/$/, "").length);
+          assertXeroEndpointConsent(domain, path, read, tokens.scope);
+        }
       };
     }
   }
 
   async authenticate(requiredScopes: readonly string[] = []): Promise<void> {
     const tokens = await (this.tokens ??= this.provider.getTokenSet());
-    const scopes = (tokens.scope ?? "").split(" ");
-    if (requiredScopes.some(scope => !scopes.includes(scope))) throw new Error("Xero grant lacks required OAuth consent");
+    const scopes = (tokens.scope ?? "").split(/\s+/);
+    for (const scope of requiredScopes) {
+      const options = compatibleXeroScopes(scope);
+      if (!options.some(option => scopes.includes(option))) throw missingXeroConsent(options);
+    }
     this.authentication ??= this.authenticateTenant(tokens);
     return this.authentication;
   }

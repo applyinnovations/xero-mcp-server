@@ -583,6 +583,12 @@ CI does not connect to Xero, enable writes or deploy the MCP service.
 
 ## Account coding tool
 
+For the complete catalog's endpoint consent requirements and the reviewed
+all-tools target, see [Xero OAuth scope coverage](docs/xero-tool-scopes.md).
+Known missing endpoint consent fails before SDK transport. A provider
+`insufficient_scope` error is reported as missing consent; token refresh cannot
+add scopes. Read tools mark their errors with MCP `isError: true`.
+
 Use `list-bank-transactions` / `get-bank-transaction` for inspection and
 `list-accounts` for the chart. The agent collaborates with the user and manages
 approval independently. The server exposes one focused mutation:

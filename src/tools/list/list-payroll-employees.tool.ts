@@ -14,6 +14,7 @@ The response presents a complete overview of all staff currently registered in y
 
     if (response.isError) {
       return {
+        isError: true,
         content: [
           {
             type: "text" as const,
