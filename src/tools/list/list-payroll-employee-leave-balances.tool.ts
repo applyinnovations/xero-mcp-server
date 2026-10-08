@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { listXeroPayrollEmployeeLeaveBalances } from "../../handlers/list-xero-payroll-employee-leave-balances.handler.js";
-import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
+import { CreatePayrollTool } from "../../helpers/create-payroll-tool.js";
 import { EmployeeLeaveBalance } from "../../types/payroll-nz-types.js";
 
-const ListPayrollEmployeeLeaveBalancesTool = CreateXeroTool({
+const ListPayrollEmployeeLeaveBalancesTool = CreatePayrollTool({
   name: "list-payroll-employee-leave-balances",
   description: "List all leave balances for a specific employee in Xero. This shows current leave balances for all leave types available to the employee, including annual, sick, and other leave types.",
   access: "read",

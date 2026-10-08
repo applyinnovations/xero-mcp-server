@@ -6,6 +6,7 @@ import { z } from "zod";
 import { DurableOAuthProvider } from "../auth/oauth-provider.js";
 import { EncryptedTokenStore } from "../auth/token-store.js";
 import { assertXeroEndpointConsent, compatibleXeroScopes, missingXeroConsent } from "../auth/xero-scopes.js";
+import { configuredPayrollRegion } from "../payroll/region.js";
 
 dotenv.config();
 
@@ -16,6 +17,7 @@ export interface XeroTokenProvider {
 interface SdkRequest { method?: string; url?: string; headers?: Record<string, unknown> }
 
 export class TenantXeroClient extends XeroClient {
+  public readonly payrollRegion = configuredPayrollRegion();
   private tokens?: Promise<TokenSetParameters>;
   private authentication?: Promise<void>;
   private shortCode?: string;
@@ -37,7 +39,11 @@ export class TenantXeroClient extends XeroClient {
         if (!effectiveTenantIds().includes(this.tenantId)) throw new Error("Selected tenant is not allowed");
         const read = ["GET", "HEAD", "OPTIONS"].includes((request.method ?? "").toUpperCase());
         if (!read) assertTenantWriteAccess(this.tenantId);
-        const domain = api === this.accountingApi ? "accounting" : api === this.payrollNZApi ? "payrollNZ" : undefined;
+        if ((api === this.payrollNZApi && this.payrollRegion !== "NZ") ||
+          (api === this.payrollAUApi && this.payrollRegion !== "AU") || api === this.payrollUKApi) {
+          throw new Error(`Payroll API does not match XERO_PAYROLL_REGION=${this.payrollRegion}; cross-region requests are disabled`);
+        }
+        const domain = api === this.accountingApi ? "accounting" : api === this.payrollNZApi ? "payrollNZ" : api === this.payrollAUApi ? "payrollAU" : undefined;
         if (domain && request.url) {
           const tokens = await (this.tokens ??= this.provider.getTokenSet());
           const path = new URL(request.url).pathname.slice(new URL(api.basePath).pathname.replace(/\/$/, "").length);

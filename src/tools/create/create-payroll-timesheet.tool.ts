@@ -1,34 +1,21 @@
-import { Timesheet } from "xero-node/dist/gen/model/payroll-nz/timesheet.js";
-import { z } from "zod";
+import { timesheetShape } from "../../payroll/timesheet-schema.js";
 
 import {
   createXeroPayrollTimesheet,
 } from "../../handlers/create-xero-payroll-timesheet.handler.js";
-import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
+import { CreatePayrollTool } from "../../helpers/create-payroll-tool.js";
 
-const CreatePayrollTimesheetTool = CreateXeroTool({
+const CreatePayrollTimesheetTool = CreatePayrollTool(region => ({
   name: "create-timesheet",
   description: `Create a new payroll timesheet in Xero.
-This allows you to specify details such as the employee ID, payroll calendar ID, start and end dates, and timesheet lines.`,
+NZ requires payrollCalendarID and dated scalar-unit lines. AU omits payrollCalendarID and uses daily numberOfUnits arrays, including zero-unit days, for the full inclusive date range.`,
   access: "write",
-  schema: {
-    payrollCalendarID: z.string().describe("The ID of the payroll calendar."),
-    employeeID: z.string().describe("The ID of the employee."),
-    startDate: z.string().describe("The start date of the timesheet period (YYYY-MM-DD)."),
-    endDate: z.string().describe("The end date of the timesheet period (YYYY-MM-DD)."),
-    timesheetLines: z
-      .array(
-        z.object({
-          earningsRateID: z.string().describe("The ID of the earnings rate."),
-          numberOfUnits: z.number().describe("The number of units for the timesheet line."),
-          date: z.string().describe("The date for the timesheet line (YYYY-MM-DD)."),
-        })
-      )
-      .optional()
-      .describe("The lines of the timesheet."),
-  },
-  handler: async (params: Timesheet) => {
-    const response = await createXeroPayrollTimesheet(params);
+  schema: timesheetShape(region),
+  handler: async params => {
+    // Transport selection is not a payroll API request field.
+    const input = { ...params } as typeof params & { tenantId?: string };
+    delete input.tenantId;
+    const response = await createXeroPayrollTimesheet(input);
 
     if (response.isError) {
       return {
@@ -53,6 +40,6 @@ This allows you to specify details such as the employee ID, payroll calendar ID,
       ],
     };
   },
-});
+}));
 
 export default CreatePayrollTimesheetTool;

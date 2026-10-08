@@ -22,6 +22,13 @@ This is a Model Context Protocol (MCP) server implementation for Xero. It provid
 - [Xero API Explorer](https://api-explorer.xero.com/)
 - [Xero OpenAPI Specs](https://github.com/XeroAPI/Xero-OpenAPI)
 - [Xero-Node Public API SDK Docs](https://xeroapi.github.io/xero-node/accounting)
+
+Payroll API region is selected with `XERO_PAYROLL_REGION=NZ` (the default when
+unset) or `XERO_PAYROLL_REGION=AU`. This selects the SDK API and its regional
+schemas, not an accounting hostname. Unsupported values fail startup. All
+organisations served by a process must use the selected payroll region; run
+separate processes for mixed regions. See [payroll regional support](docs/payroll-regions.md)
+for supported operations, AU timesheet input, and OAuth scope requirements.
 - [Developer Documentation](https://developer.xero.com/)
 
 ## Setup

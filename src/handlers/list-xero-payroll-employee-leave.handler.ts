@@ -1,3 +1,4 @@
+import { assertPayrollOperation } from "../payroll/region.js";
 import { xeroClient } from "../clients/xero-client.js";
 import { XeroClientResponse } from "../types/tool-response.js";
 import { formatError } from "../helpers/format-error.js";
@@ -13,6 +14,7 @@ interface FetchEmployeeLeaveParams {
  * Internal function to fetch employee leave from Xero
  */
 async function fetchEmployeeLeave({ employeeId }: FetchEmployeeLeaveParams): Promise<EmployeeLeave[] | null> {
+  assertPayrollOperation(xeroClient.payrollRegion, "list-payroll-employee-leave");
   await xeroClient.authenticate();
 
   if (!employeeId) {

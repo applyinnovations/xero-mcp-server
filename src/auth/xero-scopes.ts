@@ -25,11 +25,13 @@ export function missingXeroConsent(options: readonly string[]): Error {
 }
 
 /** Relative SDK endpoint paths, including indirect reads within mutation handlers. */
-export function xeroEndpointScopeOptions(domain: "accounting" | "payrollNZ", path: string, read: boolean): string[] | undefined {
+export function xeroEndpointScopeOptions(domain: "accounting" | "payrollNZ" | "payrollAU", path: string, read: boolean): string[] | undefined {
   const [resource, report] = path.split("/").filter(Boolean);
   let base: string | undefined;
   if (domain === "payrollNZ") {
     base = ({ Employees: "payroll.employees", LeaveTypes: "payroll.settings", Timesheets: "payroll.timesheets" } as Record<string, string>)[resource];
+  } else if (domain === "payrollAU") {
+    base = ({ Employees: "payroll.employees", PayItems: "payroll.settings", Timesheets: "payroll.timesheets" } as Record<string, string>)[resource];
   } else {
     if (resource === "Items") return ["accounting.invoices", "accounting.settings"].flatMap(scope => read ? [`${scope}.read`, scope] : [scope]);
     if (resource === "Reports") {
@@ -47,7 +49,7 @@ export function xeroEndpointScopeOptions(domain: "accounting" | "payrollNZ", pat
   return base ? compatibleXeroScopes(read ? `${base}.read` : base) : undefined;
 }
 
-export function assertXeroEndpointConsent(domain: "accounting" | "payrollNZ", path: string, read: boolean, scope: string | undefined): void {
+export function assertXeroEndpointConsent(domain: "accounting" | "payrollNZ" | "payrollAU", path: string, read: boolean, scope: string | undefined): void {
   // Legacy static bearer configuration supplies no scope metadata. Let Xero decide
   // in that case; its scope rejection is formatted distinctly from expired tokens.
   if (scope === undefined) return;

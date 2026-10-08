@@ -1,3 +1,4 @@
+import { assertPayrollOperation } from "../payroll/region.js";
 import { Timesheet } from "xero-node/dist/gen/model/payroll-nz/timesheet.js";
 
 import { xeroClient } from "../clients/xero-client.js";
@@ -5,6 +6,7 @@ import { formatError } from "../helpers/format-error.js";
 import { XeroClientResponse } from "../types/tool-response.js";
 
 async function revertTimesheet(timesheetID: string): Promise<Timesheet | null> {
+  assertPayrollOperation(xeroClient.payrollRegion, "revert-timesheet");
   await xeroClient.authenticate();
 
   // Call the revertTimesheet endpoint from the PayrollNZApi

@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { listXeroPayrollLeavePeriods } from "../../handlers/list-xero-payroll-leave-periods.handler.js";
-import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
+import { CreatePayrollTool } from "../../helpers/create-payroll-tool.js";
 import { LeavePeriod } from "../../types/payroll-nz-types.js";
 
-const ListPayrollLeavePeriodsToolTool = CreateXeroTool({
+const ListPayrollLeavePeriodsToolTool = CreatePayrollTool({
   name: "list-payroll-leave-periods",
   description: "List all leave periods for a specific employee in Xero. This shows detailed time off periods including start and end dates, period status, payment dates, and leave types. Provide an employee ID to see their leave periods.",
   access: "read",

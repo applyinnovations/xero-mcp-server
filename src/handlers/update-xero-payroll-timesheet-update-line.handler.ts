@@ -1,3 +1,4 @@
+import { assertPayrollOperation } from "../payroll/region.js";
 import {
   TimesheetLine,
 } from "xero-node/dist/gen/model/payroll-nz/timesheetLine.js";
@@ -11,6 +12,7 @@ async function updateTimesheetLine(
   timesheetLineID: string,
   timesheetLine: TimesheetLine
 ): Promise<TimesheetLine | null> {
+  assertPayrollOperation(xeroClient.payrollRegion, "update-timesheet-line");
   await xeroClient.authenticate();
 
   // Call the updateTimesheetLine endpoint from the PayrollNZApi

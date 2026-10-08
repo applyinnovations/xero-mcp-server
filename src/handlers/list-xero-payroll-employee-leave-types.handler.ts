@@ -1,3 +1,4 @@
+import { assertPayrollOperation } from "../payroll/region.js";
 import { xeroClient } from "../clients/xero-client.js";
 import { XeroClientResponse } from "../types/tool-response.js";
 import { formatError } from "../helpers/format-error.js";
@@ -8,6 +9,7 @@ import { EmployeeLeaveType } from "../types/payroll-nz-types.js";
  * Internal function to fetch employee leave types from Xero
  */
 async function fetchEmployeeLeaveTypes(employeeId: string): Promise<EmployeeLeaveType[] | null> {
+  assertPayrollOperation(xeroClient.payrollRegion, "list-payroll-employee-leave-types");
   await xeroClient.authenticate();
 
   if (!employeeId) {

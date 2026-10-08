@@ -1,11 +1,12 @@
+import { timesheetHours } from "../../payroll/operations.js";
 import { z } from "zod";
 
 import {
   getXeroPayrollTimesheet,
 } from "../../handlers/get-xero-payroll-timesheet.handler.js";
-import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
+import { CreatePayrollTool } from "../../helpers/create-payroll-tool.js";
 
-const GetPayrollTimesheetTool = CreateXeroTool({
+const GetPayrollTimesheetTool = CreatePayrollTool({
   name: "get-timesheet",
   description: `Retrieve a single payroll timesheet from Xero by its ID.
 This provides details such as the timesheet ID, employee ID, start and end dates, total hours, and the last updated date.`,
@@ -51,7 +52,7 @@ This provides details such as the timesheet ID, employee ID, start and end dates
             `Employee ID: ${timesheet.employeeID}`,
             `Start Date: ${timesheet.startDate}`,
             `End Date: ${timesheet.endDate}`,
-            `Total Hours: ${timesheet.totalHours}`,
+            `Total Hours: ${timesheetHours(timesheet)}`,
             `Last Updated: ${timesheet.updatedDateUTC}`,
           ]
             .filter(Boolean)

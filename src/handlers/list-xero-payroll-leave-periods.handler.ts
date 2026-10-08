@@ -1,3 +1,4 @@
+import { assertPayrollOperation } from "../payroll/region.js";
 import { xeroClient } from "../clients/xero-client.js";
 import { XeroClientResponse } from "../types/tool-response.js";
 import { formatError } from "../helpers/format-error.js";
@@ -17,6 +18,7 @@ async function fetchLeavePeriods({
   startDate,
   endDate,
 }: FetchLeavePeriodParams): Promise<LeavePeriod[] | null> {
+  assertPayrollOperation(xeroClient.payrollRegion, "list-payroll-leave-periods");
   await xeroClient.authenticate();
 
   if (!employeeId) {

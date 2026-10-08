@@ -1,3 +1,4 @@
+import { assertPayrollOperation } from "../payroll/region.js";
 import {
   TimesheetLine,
 } from "xero-node/dist/gen/model/payroll-nz/timesheetLine.js";
@@ -7,6 +8,7 @@ import { formatError } from "../helpers/format-error.js";
 import { XeroClientResponse } from "../types/tool-response.js";
 
 async function addTimesheetLine(timesheetID: string, timesheetLine: TimesheetLine): Promise<TimesheetLine | null> {
+  assertPayrollOperation(xeroClient.payrollRegion, "add-timesheet-line");
   await xeroClient.authenticate();
 
   // Call the createTimesheetLine endpoint from the PayrollNZApi

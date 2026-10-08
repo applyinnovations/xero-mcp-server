@@ -6,9 +6,9 @@ import { z } from "zod";
 import {
   updateXeroPayrollTimesheetUpdateLine,
 } from "../../handlers/update-xero-payroll-timesheet-update-line.handler.js";
-import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
+import { CreatePayrollTool } from "../../helpers/create-payroll-tool.js";
 
-const UpdatePayrollTimesheetLineTool = CreateXeroTool({
+const UpdatePayrollTimesheetLineTool = CreatePayrollTool({
   name: "update-timesheet-line",
   description: `Update an existing timesheet line in a payroll timesheet in Xero.`,
   access: "write",

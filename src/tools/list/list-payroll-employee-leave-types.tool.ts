@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { listXeroPayrollEmployeeLeaveTypes } from "../../handlers/list-xero-payroll-employee-leave-types.handler.js";
-import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
+import { CreatePayrollTool } from "../../helpers/create-payroll-tool.js";
 import { EmployeeLeaveType } from "../../types/payroll-nz-types.js";
 
-const ListPayrollEmployeeLeaveTypesTool = CreateXeroTool({
+const ListPayrollEmployeeLeaveTypesTool = CreatePayrollTool({
   name: "list-payroll-employee-leave-types",
   description: "List all leave types available for a specific employee in Xero. This shows detailed information about the types of leave an employee can take, including schedule of accrual, leave type name, and entitlement.",
   access: "read",

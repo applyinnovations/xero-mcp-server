@@ -3,9 +3,9 @@ import { z } from "zod";
 import {
   revertXeroPayrollTimesheet,
 } from "../../handlers/revert-xero-payroll-timesheet.handler.js";
-import { CreateXeroTool } from "../../helpers/create-xero-tool.js";
+import { CreatePayrollTool } from "../../helpers/create-payroll-tool.js";
 
-const RevertPayrollTimesheetTool = CreateXeroTool({
+const RevertPayrollTimesheetTool = CreatePayrollTool({
   name: "revert-timesheet",
   description: `Revert a payroll timesheet to draft in Xero by its ID.`,
   access: "write",

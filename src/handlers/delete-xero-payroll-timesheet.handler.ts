@@ -1,8 +1,10 @@
+import { assertPayrollOperation } from "../payroll/region.js";
 import { xeroClient } from "../clients/xero-client.js";
 import { formatError } from "../helpers/format-error.js";
 import { XeroClientResponse } from "../types/tool-response.js";
 
 async function deleteTimesheet(timesheetID: string): Promise<boolean> {
+  assertPayrollOperation(xeroClient.payrollRegion, "delete-timesheet");
   await xeroClient.authenticate();
 
   // Call the deleteTimesheet endpoint from the PayrollNZApi
