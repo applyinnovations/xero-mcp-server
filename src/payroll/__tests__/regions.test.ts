@@ -1,5 +1,6 @@
 import * as auHandlers from "../au/handlers/index.js";
 import { AuPayrollClient } from "../au/client.js";
+import { PayrollAuTimesheetsV2Api } from "../au/timesheets-v2.js";
 import type { ToolContext } from "../../types/tool-definition.js";
 import { createXeroPayrollTimesheet as nz_createXeroPayrollTimesheet } from "../nz/handlers/create-xero-payroll-timesheet.handler.js";
 import { getXeroPayrollTimesheet as nz_getXeroPayrollTimesheet } from "../nz/handlers/get-xero-payroll-timesheet.handler.js";
@@ -640,7 +641,7 @@ it.each(
   async (region, _name, method, path, invoke, resource) => {
     await fixture(region, async (client, requests) => {
       const foreign =
-        region === "AU" ? client.payrollNZApi : client.payrollAUApi;
+        region === "AU" ? client.payrollNZApi : PayrollAuTimesheetsV2Api.prototype;
       const foreignCalls = [
         vi.spyOn(foreign, "approveTimesheet"),
         vi.spyOn(foreign, "revertTimesheet"),
