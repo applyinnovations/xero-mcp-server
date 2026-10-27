@@ -18,13 +18,11 @@ spec:
   taskRunTemplate:
     serviceAccountName: tekton-build-sa
     podTemplate:
+      automountServiceAccountToken: false
       nodeSelector:
         storage.xlab.now/fast-local: 'true'
-      securityContext:
-        fsGroup: 1000
-        fsGroupChangePolicy: OnRootMismatch
   taskRunSpecs:
-  - pipelineTaskName: build-and-push
+  - pipelineTaskName: build
     podTemplate:
       hostUsers: false
   timeouts:
@@ -35,7 +33,7 @@ spec:
       type: string
     workspaces:
     - name: source
-    - name: buildkit-state
+    - name: artifacts
     - name: docker-config
     tasks:
     - name: clone
@@ -43,7 +41,7 @@ spec:
         resolver: cluster
         params:
         - {name: kind, value: task}
-        - {name: name, value: git-clone-v2}
+        - {name: name, value: git-clone-v1}
         - {name: namespace, value: tekton-pipelines}
       params:
       - name: url
@@ -57,28 +55,40 @@ spec:
       workspaces:
       - name: output
         workspace: source
-    - name: build-and-push
+    # Builds the Dockerfile, whose build stage also runs the tests and lint.
+    # No credentials here; the archive goes to publish.
+    - name: build
       runAfter: [clone]
       taskRef:
         resolver: cluster
         params:
         - {name: kind, value: task}
-        - {name: name, value: buildkit-build-push}
+        - {name: name, value: dockerfile-build-v1}
         - {name: namespace, value: tekton-buildkit}
-      params:
-      - name: IMAGE
-        value: registry.registry.svc.cluster.local/xero-mcp-server
-      - name: COMMIT_SHA
-        value: $(tasks.clone.results.COMMIT_SHA)
-      - name: REGISTRY_INSECURE
-        value: 'true'
       workspaces:
       - {name: source, workspace: source}
-      - {name: buildkit-state, workspace: buildkit-state}
+      - {name: artifacts, workspace: artifacts}
+    - name: publish
+      runAfter: [build]
+      taskRef:
+        resolver: cluster
+        params:
+        - {name: kind, value: task}
+        - {name: name, value: oci-publish-v1}
+        - {name: namespace, value: tekton-pipelines}
+      params:
+      - name: IMAGE
+        value: registry.xlab.now/xero-mcp-server
+      - name: COMMIT_SHA
+        value: $(tasks.clone.results.COMMIT_SHA)
+      - name: ARCHIVE_SHA256
+        value: $(tasks.build.results.ARCHIVE_SHA256)
+      workspaces:
+      - {name: artifacts, workspace: artifacts}
       - {name: docker-config, workspace: docker-config}
     results:
     - name: IMAGE_DIGEST
-      value: $(tasks.build-and-push.results.IMAGE_DIGEST)
+      value: $(tasks.publish.results.IMAGE_DIGEST)
   workspaces:
   - name: source
     volumeClaimTemplate:
@@ -88,9 +98,14 @@ spec:
         resources:
           requests:
             storage: 2Gi
-  - name: buildkit-state
-    persistentVolumeClaim:
-      claimName: oci-layer-cache
+  - name: artifacts
+    volumeClaimTemplate:
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: fast-local
+        resources:
+          requests:
+            storage: 2Gi
   - name: docker-config
     secret:
       secretName: registry-credentials
