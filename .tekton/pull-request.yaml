@@ -18,11 +18,13 @@ spec:
   taskRunTemplate:
     serviceAccountName: tekton-build-sa
     podTemplate:
+      automountServiceAccountToken: false
       nodeSelector:
         storage.xlab.now/fast-local: 'true'
-      securityContext:
-        fsGroup: 1000
-        fsGroupChangePolicy: OnRootMismatch
+  taskRunSpecs:
+  - pipelineTaskName: verify
+    podTemplate:
+      hostUsers: false
   timeouts:
     pipeline: 30m
   pipelineSpec:
@@ -31,13 +33,14 @@ spec:
       type: string
     workspaces:
     - name: source
+    - name: artifacts
     tasks:
     - name: clone
       taskRef:
         resolver: cluster
         params:
         - {name: kind, value: task}
-        - {name: name, value: git-clone-v2}
+        - {name: name, value: git-clone-v1}
         - {name: namespace, value: tekton-pipelines}
       params:
       - name: url
@@ -48,44 +51,32 @@ spec:
         value: $(params.revision)
       - name: objectFilter
         value: none
-      - name: outputOwnerUid
-        value: '1000'
-      - name: outputOwnerGid
-        value: '1000'
       workspaces:
       - name: output
         workspace: source
+    # Builds the Dockerfile exactly as images.yaml does; its build stage runs
+    # npm run build, npm test and npm run lint. The archive is not published.
     - name: verify
       runAfter: [clone]
-      taskSpec:
-        workspaces:
-        - name: source
-        steps:
-        - name: verify
-          image: node:24.21.0-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6
-          workingDir: $(workspaces.source.path)
-          securityContext:
-            runAsNonRoot: true
-            runAsUser: 1000
-            runAsGroup: 1000
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop: [ALL]
-          computeResources:
-            requests: {cpu: '1', memory: 1Gi}
-            limits: {cpu: '4', memory: 4Gi}
-          script: |
-            #!/bin/sh
-            set -eu
-            npm ci --ignore-scripts --no-audit --no-fund --cache /tmp/npm-cache
-            npm run build
-            npm test
-            npm run lint
+      taskRef:
+        resolver: cluster
+        params:
+        - {name: kind, value: task}
+        - {name: name, value: dockerfile-build-v1}
+        - {name: namespace, value: tekton-buildkit}
       workspaces:
-      - name: source
-        workspace: source
+      - {name: source, workspace: source}
+      - {name: artifacts, workspace: artifacts}
   workspaces:
   - name: source
+    volumeClaimTemplate:
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: fast-local
+        resources:
+          requests:
+            storage: 2Gi
+  - name: artifacts
     volumeClaimTemplate:
       spec:
         accessModes: [ReadWriteOnce]
