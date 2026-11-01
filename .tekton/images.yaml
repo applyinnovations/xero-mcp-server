@@ -108,4 +108,4 @@ spec:
             storage: 2Gi
   - name: docker-config
     secret:
-      secretName: registry-credentials
+      secretName: registry-push-xero-mcp-server
