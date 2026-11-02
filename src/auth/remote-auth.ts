@@ -13,6 +13,8 @@ export interface RemoteConfig {
   connectSubjects?: readonly string[];
   connectScope?: string;
   connectClientId?: string;
+  /** OAuth client IDs whose tokens may receive company write tools. Empty means none (fail closed). */
+  writeClientIds: readonly string[];
 }
 
 export interface VerifiedAccess {
@@ -51,9 +53,18 @@ export function loadRemoteConfig(): RemoteConfig {
     return url.origin;
   });
   const readScope = z.string().regex(/^[A-Za-z0-9:_-]+$/).parse(process.env.MCP_READ_SCOPE ?? "xero:read");
+  const writeClientIds = parseClientIdList(process.env.MCP_WRITE_CLIENT_IDS, "MCP_WRITE_CLIENT_IDS");
   const audience = process.env.MCP_AUDIENCE || resource.href;
   if (!audience.trim()) throw new Error("MCP_AUDIENCE must identify this resource");
-  return { issuer: process.env.MCP_ISSUER!, jwksUrl, accessTokenProfile, resource: resource.href, audience, readScope, subjectTenants: new Map(Object.entries(mapping)), allowedOrigins, connectSubjects, connectScope, connectClientId };
+  return { issuer: process.env.MCP_ISSUER!, jwksUrl, accessTokenProfile, resource: resource.href, audience, readScope, subjectTenants: new Map(Object.entries(mapping)), allowedOrigins, connectSubjects, connectScope, connectClientId, writeClientIds };
+}
+
+// Unset or blank yields an empty list; any malformed or empty entry rejects the configuration.
+function parseClientIdList(value: string | undefined, label: string): string[] {
+  if (!value?.trim()) return [];
+  const ids = value.split(",").map(id => id.trim());
+  if (ids.some(id => !/^[A-Za-z0-9._:-]+$/.test(id))) throw new Error(`${label} must be a comma-separated list of client IDs`);
+  return [...new Set(ids)];
 }
 
 function trustedJwksUrl(value: string, issuer: string): URL {
@@ -143,6 +154,11 @@ export function createAccessVerifier(config: RemoteConfig, suppliedKey?: JWTVeri
     if (!context.scopes.includes(config.readScope) || !context.tenantIds.length) throw new RemoteAuthError(403);
     return context.tenantIds;
   };
+}
+
+// Company write tools require an explicitly approved OAuth client, in addition to read access and tenant policy.
+export function canWriteCompany(config: RemoteConfig, context: VerifiedAccess): boolean {
+  return typeof context.clientId === "string" && context.clientId.length > 0 && config.writeClientIds.includes(context.clientId);
 }
 
 export function canConnectXero(config: RemoteConfig, context: VerifiedAccess): boolean {

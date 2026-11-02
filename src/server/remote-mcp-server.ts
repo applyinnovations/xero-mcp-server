@@ -1,7 +1,7 @@
 import { createServer, IncomingMessage, ServerResponse } from "node:http";
 import { JWTVerifyGetKey } from "jose";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { RemoteAuthError, RemoteConfig, createAccessContextVerifier, canConnectXero } from "../auth/remote-auth.js";
+import { RemoteAuthError, RemoteConfig, createAccessContextVerifier, canConnectXero, canWriteCompany } from "../auth/remote-auth.js";
 import { runWithTenantPermissions, configuredTenantIds, configuredWritableTenantIds } from "../clients/xero-client.js";
 import { XeroMcpServer } from "./xero-mcp-server.js";
 import { ToolFactory } from "../tools/tool-factory.js";
@@ -69,7 +69,7 @@ export function createRemoteServer(config: RemoteConfig, key?: JWTVerifyGetKey, 
         const context = await verify(token);
         const permissions = context.tenantIds.filter(id => configuredTenantIds().includes(id));
         const reader = context.scopes.includes(config.readScope) && permissions.length > 0;
-        const writePermissions = reader && typeof context.clientId === "string" && context.clientId.length > 0
+        const writePermissions = reader && canWriteCompany(config, context)
           ? permissions.filter(id => configuredWritableTenantIds().includes(id)) : [];
         const connector = !!onboarding && canConnectXero(config, context);
         if (!reader && !connector) throw new RemoteAuthError(403);

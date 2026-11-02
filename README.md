@@ -364,13 +364,26 @@ Required settings:
 - `MCP_READ_SCOPE`: required access-token scope, default `xero:read`.
 - `MCP_SUBJECT_TENANTS_JSON`: JSON mapping exact issuer subject IDs to arrays of
   authorized tenant UUIDs. Subjects absent from this mapping are denied.
+- `MCP_WRITE_CLIENT_IDS`: comma-separated exact OAuth client IDs (access-token
+  `azp` for `bearer-claim`, `client_id` for `rfc9068`) that may receive company
+  write tools, for example `chatgpt`. Each ID must match `^[A-Za-z0-9._:-]+$`;
+  surrounding spaces are trimmed and empty or malformed entries fail startup.
+  **Unset or empty means no client receives write tools (fail closed).** Tokens
+  from other clients with the read scope still get read tools. Onboarding tools
+  remain governed only by `MCP_CONNECT_CLIENT_ID`.
 
 The server intersects subject permissions with its tenant allowlist and the
 organisations connected to the Xero grant. An authenticated subject cannot select
 another subject's tenant. The grant is server-managed; incoming access tokens are never
 forwarded to Xero. Different POST requests get separate MCP servers and client
-contexts. Company mutations are exposed only to verified clients with mapped
-read-write companies and remain subject to actual Xero consent and tenant guards.
+contexts. Company mutations are exposed only to verified tokens from a client in
+`MCP_WRITE_CLIENT_IDS` with mapped read-write companies, and remain subject to
+actual Xero consent and tenant guards. The same request write permission gates
+both tool registration and every SDK mutation, including payroll.
+
+Upgrading from a release without `MCP_WRITE_CLIENT_IDS`: set it (for example
+`MCP_WRITE_CLIENT_IDS=chatgpt`) in the deployment before or together with the new
+image. Otherwise every client, including existing writers, loses write tools.
 
 The internal endpoint is `/mcp`. If the public endpoint has a path prefix, the
 reverse proxy maps it to this internal path and forwards the original Host.
