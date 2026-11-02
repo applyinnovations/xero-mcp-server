@@ -13,7 +13,7 @@ import { createRemoteServer } from "../remote-mcp-server.js";
 
 const tenantA = "11111111-1111-4111-8111-111111111111";
 const tenantB = "22222222-2222-4222-8222-222222222222";
-const config: RemoteConfig = { accessTokenProfile: "bearer-claim", issuer: "https://keycloak.example.test/realms/fixture", resource: "https://mcp.example.test/mcp", audience: "https://mcp.example.test/mcp", readScope: "xero:read", subjectTenants: new Map([["alice", [tenantA]], ["bob", [tenantB]]]), allowedOrigins: [] };
+const config: RemoteConfig = { accessTokenProfile: "bearer-claim", issuer: "https://keycloak.example.test/realms/fixture", resource: "https://mcp.example.test/mcp", audience: "https://mcp.example.test/mcp", readScope: "xero:read", subjectTenants: new Map([["alice", [tenantA]], ["bob", [tenantB]]]), allowedOrigins: [], writeClientIds: ["approved-client", "fixture-client"] };
 let privateKey: CryptoKey;
 let key: JWTVerifyGetKey;
 beforeAll(async () => {
@@ -161,6 +161,35 @@ it("selects write tools using verified access and global company policy, and req
   expect(AccountingApi.prototype.getAccounts).not.toHaveBeenCalled();
 });
 
+
+it("grants company write tools only to allow-listed OAuth clients and fails closed when none are configured", async () => {
+  vi.stubEnv("XERO_ALLOWED_TENANT_IDS", tenantA);
+  vi.stubEnv("XERO_TENANT_ACCESS_JSON", JSON.stringify({ [tenantA]: "read-write" }));
+  mockGrant("accounting.banktransactions");
+  const post = vi.spyOn(AccountingApi.prototype, "updateBankTransaction");
+  for (const [writeClientIds, azp, allowed] of [
+    [["chatgpt"], "chatgpt", true],
+    [["chatgpt"], "claude-code", false],
+    [["chatgpt", "claude-code"], "claude-code", true],
+    [[], "chatgpt", false],
+  ] as const) {
+    const endpoint = await listening({ ...config, writeClientIds });
+    const client = new Client({ name: "client-allowlist-test", version: "1" });
+    try {
+      await client.connect(new StreamableHTTPClientTransport(endpoint.url, { requestInit: { headers: { Authorization: `Bearer ${await token({ azp })}` } } }));
+      const tools = (await client.listTools()).tools;
+      expect(tools.length).toBeGreaterThan(0);
+      expect(tools.some(tool => tool.name === "list-bank-transactions")).toBe(true);
+      expect(tools.filter(tool => tool.annotations?.readOnlyHint === false).length > 0).toBe(allowed);
+      expect(tools.some(tool => tool.name === "create-invoice")).toBe(allowed);
+      if (!allowed) {
+        const denied = await client.callTool({ name: "code-bank-transaction", arguments: { tenantId: tenantA, bankTransactionId: transaction.bankTransactionID, changes, idempotencyKey: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" } });
+        expect(denied.isError).toBe(true);
+      }
+    } finally { await client.close(); await endpoint.close(); }
+  }
+  expect(post).not.toHaveBeenCalled();
+});
 
 it("performs a direct coding call through signed-user request registration without approval state", async () => {
   vi.stubEnv("XERO_ALLOWED_TENANT_IDS", tenantA);

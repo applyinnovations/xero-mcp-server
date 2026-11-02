@@ -21,7 +21,7 @@ const tenants = [1, 2, 3].map(n => `${String(n).repeat(8)}-1111-4111-8111-111111
 const connections = tenants.map((tenantId, i) => ({ tenantId, tenantType: "ORGANISATION", tenantName: `Fixture organisation ${i + 1}` }));
 const config: RemoteConfig = { issuer: "https://issuer.example.test/realm", resource: `${origin}/mcp`, audience: `${origin}/mcp`,
   accessTokenProfile: "bearer-claim", readScope: "xero:read", subjectTenants: new Map(), allowedOrigins: [],
-  connectSubjects: ["owner"], connectScope: "xero:connect", connectClientId: "fixture-mcp-client" };
+  connectSubjects: ["owner"], connectScope: "xero:connect", connectClientId: "fixture-mcp-client", writeClientIds: [] };
 let directory: string; let statePath: string; let store: EncryptedTokenStore;
 let key: JWTVerifyGetKey; let privateKey: CryptoKey;
 let now: number; let round: number; let xeroSubject: string; let connectionOverride: unknown;

@@ -4,7 +4,7 @@ import { createAccessVerifier, loadRemoteConfig, RemoteConfig } from "../remote-
 
 const tenant = "11111111-1111-4111-8111-111111111111";
 const issuer = "https://identity.example.test/";
-const config: RemoteConfig = { issuer, accessTokenProfile: "rfc9068", resource: "https://mcp.example.test/mcp", audience: "mcp-resource", readScope: "xero:read", subjectTenants: new Map([["alice", [tenant]]]), allowedOrigins: [] };
+const config: RemoteConfig = { issuer, accessTokenProfile: "rfc9068", resource: "https://mcp.example.test/mcp", audience: "mcp-resource", readScope: "xero:read", subjectTenants: new Map([["alice", [tenant]]]), allowedOrigins: [], writeClientIds: [] };
 let privateKey: CryptoKey;
 let rotatedKey: CryptoKey;
 let jwk: JWK;
@@ -166,5 +166,19 @@ describe("synthetic provider contracts (no live-provider proof)", () => {
     expect(() => loadRemoteConfig()).toThrow("origin");
     vi.stubEnv("MCP_JWKS_URL", ""); vi.stubEnv("MCP_ACCESS_TOKEN_PROFILE", "guess");
     expect(() => loadRemoteConfig()).toThrow();
+  });
+  it("parses MCP_WRITE_CLIENT_IDS as a fail-closed client allow-list", () => {
+    vi.stubEnv("MCP_ISSUER", issuer); vi.stubEnv("MCP_RESOURCE_URL", config.resource);
+    vi.stubEnv("MCP_SUBJECT_TENANTS_JSON", JSON.stringify({ alice: [tenant] }));
+    vi.stubEnv("MCP_WRITE_CLIENT_IDS", undefined);
+    expect(loadRemoteConfig().writeClientIds).toEqual([]);
+    vi.stubEnv("MCP_WRITE_CLIENT_IDS", " ");
+    expect(loadRemoteConfig().writeClientIds).toEqual([]);
+    vi.stubEnv("MCP_WRITE_CLIENT_IDS", " chatgpt , svc.writer:1 ,chatgpt");
+    expect(loadRemoteConfig().writeClientIds).toEqual(["chatgpt", "svc.writer:1"]);
+    for (const invalid of ["chatgpt,,other", "chatgpt,", "chat gpt", "client*", "a/b"]) {
+      vi.stubEnv("MCP_WRITE_CLIENT_IDS", invalid);
+      expect(() => loadRemoteConfig(), invalid).toThrow("MCP_WRITE_CLIENT_IDS");
+    }
   });
 });
