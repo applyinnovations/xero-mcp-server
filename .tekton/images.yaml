@@ -94,7 +94,7 @@ spec:
     volumeClaimTemplate:
       spec:
         accessModes: [ReadWriteOnce]
-        storageClassName: fast-local
+        storageClassName: scratch-local
         resources:
           requests:
             storage: 2Gi
@@ -102,7 +102,7 @@ spec:
     volumeClaimTemplate:
       spec:
         accessModes: [ReadWriteOnce]
-        storageClassName: fast-local
+        storageClassName: scratch-local
         resources:
           requests:
             storage: 2Gi
