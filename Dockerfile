@@ -7,7 +7,10 @@ COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts --no-audit --no-fund
 COPY tsconfig.json vitest.config.ts eslint.config.js ./
 COPY src ./src
-RUN npm run build && npm test && npm run lint
+# The auth tests fsync real state files in temporary directories; on the CI
+# builder's overlay storage each fsync can take seconds and time tests out.
+# Fixtures need no durability and do not belong in a layer, so use tmpfs.
+RUN --mount=type=tmpfs,target=/tmp npm run build && npm test && npm run lint
 
 FROM base AS production-dependencies
 COPY package.json package-lock.json ./
